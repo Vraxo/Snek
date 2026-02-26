@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="Snek.Tests/Snek.Tests.csproj" Id="dd99cf15-8f3f-4862-9755-ca79718f0201" />
+  <Project Path="Snek/Snek.csproj" />
+</Solution>

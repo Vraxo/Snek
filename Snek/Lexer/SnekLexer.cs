@@ -1,0 +1,381 @@
+﻿using Snek.Diagnoistics;
+using Snek.Pipeline;
+using System.Text;
+
+namespace Snek.Lexer;
+
+/// <summary>
+/// Reference lexer for Snek's default Python-like syntax.
+/// Pluggable via ILexer interface for syntax variants.
+/// </summary>
+public class SnekLexer : ILexer
+{
+    private readonly LexerRules _rules;
+    private string _source = string.Empty;
+    private int _position;
+    private int _line = 1;
+    private int _column = 1;
+    private CompilationContext? _context;
+    private readonly Stack<int> _indentStack = new();
+
+    public SnekLexer(LexerRules? rules = null)
+    {
+        _rules = rules ?? new LexerRules();
+    }
+
+    public IEnumerable<Token> Tokenize(string source, CompilationContext context)
+    {
+        _source = source;
+        _position = 0;
+        _line = 1;
+        _column = 1;
+        _context = context;
+        _indentStack.Clear();
+        _indentStack.Push(0);
+
+        var tokens = new List<Token>();
+
+        while (!IsAtEnd())
+        {
+            SkipWhitespaceAndComments();
+            if (IsAtEnd())
+            {
+                break;
+            }
+
+            var startLine = _line;
+            var startColumn = _column;
+
+            if (TryReadKeywordOrIdentifier(tokens))
+            {
+                continue;
+            }
+
+            if (TryReadNumber(tokens))
+            {
+                continue;
+            }
+
+            if (TryReadString(tokens))
+            {
+                continue;
+            }
+
+            if (TryReadOperator(tokens))
+            {
+                continue;
+            }
+
+            if (TryReadStructural(tokens))
+            {
+                continue;
+            }
+
+            ReportError($"Unexpected character '{Peek()}'", startLine, startColumn);
+            _ = Advance();
+        }
+
+        // Emit dedents to close all indentation levels
+        while (_indentStack.Count > 1)
+        {
+            _ = _indentStack.Pop();
+            tokens.Add(new Token(TokenType.Dedent, "", _line, _column));
+        }
+
+        tokens.Add(new Token(TokenType.Eof, "", _line, _column));
+        return tokens;
+    }
+
+    private bool IsAtEnd()
+    {
+        return _position >= _source.Length;
+    }
+
+    private char Peek(int offset = 0)
+    {
+        return _position + offset < _source.Length ? _source[_position + offset] : '\0';
+    }
+
+    private char Advance()
+    {
+        var c = _source[_position++];
+        if (c == '\n') { _line++; _column = 1; }
+        else { _column++; }
+        return c;
+    }
+
+    private void SkipWhitespaceAndComments()
+    {
+        while (!IsAtEnd())
+        {
+            var c = Peek();
+            if (char.IsWhiteSpace(c) && c != '\n') { _ = Advance(); continue; }
+            if (c == '#') { while (!IsAtEnd() && Peek() != '\n') { _ = Advance(); } continue; }
+            break;
+        }
+    }
+
+    private bool TryReadKeywordOrIdentifier(List<Token> tokens)
+    {
+        if (!char.IsLetter(Peek()) && Peek() != '_' && !_rules.IdentifierStartChars.Contains(Peek()))
+        {
+            return false;
+        }
+
+        var startLine = _line;
+        var startColumn = _column;
+        var sb = new StringBuilder();
+
+        while (!IsAtEnd() && (char.IsLetterOrDigit(Peek()) || Peek() == '_' || _rules.IdentifierContinueChars.Contains(Peek())))
+        {
+            _ = sb.Append(Advance());
+        }
+
+        var value = sb.ToString();
+        var type = _rules.Keywords.TryGetValue(value, out var keywordType) ? keywordType : TokenType.Identifier;
+        tokens.Add(new Token(type, value, startLine, startColumn));
+        return true;
+    }
+
+    private bool TryReadNumber(List<Token> tokens)
+    {
+        if (!char.IsDigit(Peek()))
+        {
+            return false;
+        }
+
+        var startLine = _line;
+        var startColumn = _column;
+        var sb = new StringBuilder();
+        bool isFloat = false;
+
+        // Integer part
+        while (char.IsDigit(Peek()))
+        {
+            _ = sb.Append(Advance());
+        }
+
+        // Fractional part
+        if (Peek() == '.' && char.IsDigit(Peek(1)))
+        {
+            isFloat = true;
+            _ = sb.Append(Advance()); // .
+            while (char.IsDigit(Peek()))
+            {
+                _ = sb.Append(Advance());
+            }
+        }
+
+        // Exponent
+        if (Peek() is 'e' or 'E')
+        {
+            isFloat = true;
+            _ = sb.Append(Advance());
+            if (Peek() is '+' or '-')
+            {
+                _ = sb.Append(Advance());
+            }
+
+            while (char.IsDigit(Peek()))
+            {
+                _ = sb.Append(Advance());
+            }
+        }
+
+        var value = sb.ToString();
+        var type = isFloat ? TokenType.FloatLiteral : TokenType.IntegerLiteral;
+        tokens.Add(new Token(type, value, startLine, startColumn));
+        return true;
+    }
+
+    private bool TryReadString(List<Token> tokens)
+    {
+        var c = Peek();
+        if (c != _rules.StringDelimiter && c != _rules.CharDelimiter)
+        {
+            return false;
+        }
+
+        var startLine = _line;
+        var startColumn = _column;
+        var delimiter = Advance(); // consume opening quote
+        var isChar = delimiter == _rules.CharDelimiter;
+        var sb = new StringBuilder();
+
+        while (!IsAtEnd() && Peek() != delimiter)
+        {
+            var ch = Advance();
+            if (ch == '\\')
+            {
+                if (IsAtEnd())
+                {
+                    break;
+                }
+
+                var escaped = Advance();
+                _ = sb.Append(escaped switch
+                {
+                    'n' => '\n',
+                    't' => '\t',
+                    'r' => '\r',
+                    '\\' => '\\',
+                    '"' => '"',
+                    '\'' => '\'',
+                    _ => escaped
+                });
+            }
+            else
+            {
+                _ = sb.Append(ch);
+            }
+        }
+
+        if (IsAtEnd() || Peek() != delimiter)
+        {
+            ReportError("Unterminated string literal", startLine, startColumn);
+            return true;
+        }
+        _ = Advance(); // consume closing quote
+
+        var type = isChar ? TokenType.CharLiteral : TokenType.StringLiteral;
+        tokens.Add(new Token(type, sb.ToString(), startLine, startColumn));
+        return true;
+    }
+
+    private bool TryReadOperator(List<Token> tokens)
+    {
+        // Try longest operators first
+        foreach (var (pattern, type) in _rules.Operators.OrderByDescending(o => o.Pattern.Length))
+        {
+            if (MatchString(pattern))
+            {
+                var startLine = _line;
+                var startColumn = _column;
+                // Advance past the matched pattern
+                for (int i = 0; i < pattern.Length; i++)
+                {
+                    _ = Advance();
+                }
+
+                tokens.Add(new Token(type, pattern, startLine, startColumn));
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private bool TryReadStructural(List<Token> tokens)
+    {
+        var c = Peek();
+        var startLine = _line;
+        var startColumn = _column;
+
+        if (c == '\n')
+        {
+            _ = Advance();
+            HandleNewline(tokens, startLine, startColumn);
+            return true;
+        }
+
+        // Single-char structural tokens not in operators list
+        if (c is '(' or ')' or '[' or ']' or '{' or '}' or ',' or '.' or ':')
+        {
+            _ = Advance();
+            var type = c switch
+            {
+                '(' => TokenType.LeftParen,
+                ')' => TokenType.RightParen,
+                '[' => TokenType.LeftBracket,
+                ']' => TokenType.RightBracket,
+                '{' => TokenType.LeftBrace,
+                '}' => TokenType.RightBrace,
+                ',' => TokenType.Comma,
+                '.' => TokenType.Dot,
+                ':' => TokenType.Colon,
+                _ => TokenType.Unknown
+            };
+            tokens.Add(new Token(type, c.ToString(), startLine, startColumn));
+            return true;
+        }
+
+        return false;
+    }
+
+    private void HandleNewline(List<Token> tokens, int line, int column)
+    {
+        if (!_rules.SupportsIndentation)
+        {
+            tokens.Add(new Token(TokenType.Newline, "", line, column));
+            return;
+        }
+
+        // Always emit Newline first, before any Indent/Dedent tokens.
+        // This ensures the parser sees "Statement -> Newline -> Indent -> Block".
+        tokens.Add(new Token(TokenType.Newline, "", line, column));
+
+        // Calculate indentation of next non-empty line
+        var indent = 0;
+        var tempPos = _position;
+        while (tempPos < _source.Length)
+        {
+            var c = _source[tempPos];
+            if (c == ' ') { indent++; tempPos++; }
+            else if (c == '\t') { indent += _rules.TabWidth; tempPos++; }
+            else if (c == '\n') { indent = 0; tempPos++; }
+            else if (c == '#')
+            {
+                while (tempPos < _source.Length && _source[tempPos] != '\n')
+                {
+                    tempPos++;
+                }
+            }
+            else
+            {
+                break;
+            }
+        }
+
+        var currentIndent = _indentStack.Peek();
+
+        if (indent > currentIndent)
+        {
+            _indentStack.Push(indent);
+            tokens.Add(new Token(TokenType.Indent, "", line, column));
+        }
+        else if (indent < currentIndent)
+        {
+            while (_indentStack.Count > 1 && _indentStack.Peek() > indent)
+            {
+                _ = _indentStack.Pop();
+                tokens.Add(new Token(TokenType.Dedent, "", line, column));
+            }
+            if (_indentStack.Peek() != indent)
+            {
+                ReportError("Inconsistent indentation", line, column);
+            }
+        }
+    }
+
+    private bool MatchString(string expected)
+    {
+        if (_position + expected.Length > _source.Length)
+        {
+            return false;
+        }
+
+        for (int i = 0; i < expected.Length; i++)
+        {
+            if (_source[_position + i] != expected[i])
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private void ReportError(string message, int line, int column)
+    {
+        _context?.Diagnostics.Add(new Diagnostic(_context.SourceName, message, line, column, DiagnosticSeverity.Error));
+    }
+}
