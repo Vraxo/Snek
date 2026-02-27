@@ -1,4 +1,4 @@
-﻿using Snek.Analysis;
+using Snek.Analysis;
 using Snek.Generation;
 using Snek.Lexer;
 using Snek.Parser;
@@ -74,6 +74,12 @@ public class CompilerPipelineTests
             """;
 
         var result = pipeline.Compile(source, "test.snek");
+
+        if (!result.Success)
+        {
+            var diagnostics = string.Join("\n", result.Diagnostics.Select(d => $"{d.Severity}: {d.Message}"));
+            throw new Exception($"Compilation failed with diagnostics:\n{diagnostics}");
+        }
 
         Assert.True(result.Success);
         Assert.NotNull(result.Output); // Ensure compilation succeeds even with verbose logging
