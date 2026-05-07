@@ -1,6 +1,7 @@
 ﻿using Snek.Ast;
 using Snek.Lexer;
 using Snek.Pipeline;
+using System.Reflection;
 using System.Text;
 
 namespace Snek.Generation;
@@ -39,7 +40,7 @@ public class SnekCodeGenerator : ICodeGenerator
         EmitTextSectionHeader();
         EmitEntryPoint();
 
-        foreach (var stmt in program.Statements)
+        foreach (StatementNode stmt in program.Statements)
         {
             if (stmt is FunctionDefNode func)
             {
@@ -67,21 +68,22 @@ public class SnekCodeGenerator : ICodeGenerator
             }
         }
 
-        foreach (var prop in node.GetType().GetProperties())
+        foreach (PropertyInfo prop in node.GetType().GetProperties())
         {
             if (prop.Name == "Parent")
             {
                 continue;
             }
 
-            var value = prop.GetValue(node);
+            object? value = prop.GetValue(node);
+
             if (value is AstNode child)
             {
                 CollectStringsAndExternals(child);
             }
             else if (value is IEnumerable<AstNode> children)
             {
-                foreach (var c in children)
+                foreach (AstNode c in children)
                 {
                     CollectStringsAndExternals(c);
                 }
@@ -106,10 +108,12 @@ public class SnekCodeGenerator : ICodeGenerator
         }
 
         _ = _output.AppendLine("section '.data' data readable writeable");
-        foreach (var (label, value) in _stringLiterals)
+
+        foreach ((string? label, string? value) in _stringLiterals)
         {
             _ = _output.Append($"    {label} db ");
-            var parts = new List<string>();
+            List<string> parts = [];
+
             foreach (char c in value)
             {
                 if (c is '\n' or '\t' or '\r' or '\'' or '"')
@@ -131,6 +135,7 @@ public class SnekCodeGenerator : ICodeGenerator
                     parts[^1] += c;
                 }
             }
+
             if (parts.Count > 0 && !parts[^1].EndsWith("'"))
             {
                 parts[^1] += "'";
@@ -147,25 +152,31 @@ public class SnekCodeGenerator : ICodeGenerator
         _ = _output.AppendLine("section '.idata' import data readable");
         _ = _output.AppendLine();
 
-        var libs = new Dictionary<string, HashSet<string>>
+        Dictionary<string, HashSet<string>> libs = new()
         {
             ["kernel32.dll"] = ["ExitProcess"],
             ["msvcrt.dll"] = ["printf"]
         };
 
-        foreach (var func in _externalFunctions)
+        foreach (string func in _externalFunctions)
         {
             _ = libs["msvcrt.dll"].Add(func);
         }
 
-        var libDefs = libs.Keys.Select(lib => $"{lib.Split('.')[0]},'{lib}'");
+        IEnumerable<string> libDefs = libs.Keys
+            .Select(lib => $"{lib.Split('.')[0]},'{lib}'");
+
         _ = _output.AppendLine($"    library {string.Join(",", libDefs)}");
         _ = _output.AppendLine();
 
-        foreach (var (libName, functions) in libs.OrderBy(k => k.Key))
+        foreach ((string? libName, HashSet<string>? functions) in libs.OrderBy(k => k.Key))
         {
-            var alias = libName.Split('.')[0];
-            var imports = functions.OrderBy(f => f).Select(f => $"{f},'{f}'");
+            string alias = libName.Split('.')[0];
+
+            IEnumerable<string> imports = functions
+                .OrderBy(f => f)
+                .Select(f => $"{f},'{f}'");
+
             _ = _output.AppendLine($"    import {alias}, {string.Join(",", imports)}");
         }
         _ = _output.AppendLine();
@@ -188,19 +199,22 @@ public class SnekCodeGenerator : ICodeGenerator
 
     private void EmitFunction(FunctionDefNode func)
     {
-        string mangledName = func.Name.Value == "main" ? "_main" : func.Name.Value;
+        string mangledName = func.Name.Value == "main"
+            ? "_main"
+            : func.Name.Value;
+
         _ = _output.AppendLine($"{mangledName}:");
         _ = _output.AppendLine("    push ebp");
         _ = _output.AppendLine("    mov ebp, esp");
 
         int paramOffset = 8;
-        foreach (var param in func.Parameters)
+        foreach (ParameterNode param in func.Parameters)
         {
             _ = _output.AppendLine($"    ; param {param.Name.Value} at [ebp+{paramOffset}]");
             paramOffset += 4;
         }
 
-        foreach (var stmt in func.Body)
+        foreach (StatementNode stmt in func.Body)
         {
             EmitStatement(stmt);
         }
@@ -223,19 +237,22 @@ public class SnekCodeGenerator : ICodeGenerator
                 EmitExpression(expr.Expression);
                 _ = _output.AppendLine("    pop eax");
                 break;
+
             case ReturnStatementNode ret:
-                if (ret.Value != null)
-                {
-                    EmitExpression(ret.Value);
-                }
-                else
+                if (ret.Value == null)
                 {
                     _ = _output.AppendLine("    xor eax, eax");
                 }
+                else
+                {
+                    EmitExpression(ret.Value);
+                }
                 break;
+
             case IfStatementNode ifs:
                 EmitIf(ifs);
                 break;
+
             case WhileStatementNode whl:
                 EmitWhile(whl);
                 break;
@@ -244,24 +261,25 @@ public class SnekCodeGenerator : ICodeGenerator
 
     private void EmitIf(IfStatementNode ifs)
     {
-        var elseLabel = $"_else_{_labelCounter++}";
-        var endLabel = $"_endif_{_labelCounter}";
+        string elseLabel = $"_else_{_labelCounter++}";
+        string endLabel = $"_endif_{_labelCounter}";
 
         EmitExpression(ifs.Condition);
         _ = _output.AppendLine("    pop eax");
         _ = _output.AppendLine("    test eax, eax");
         _ = _output.AppendLine($"    jz {elseLabel}");
 
-        foreach (var s in ifs.ThenBody)
+        foreach (StatementNode s in ifs.ThenBody)
         {
             EmitStatement(s);
         }
 
         _ = _output.AppendLine($"    jmp {endLabel}");
         _ = _output.AppendLine($"{elseLabel}:");
+
         if (ifs.ElseBody != null)
         {
-            foreach (var s in ifs.ElseBody)
+            foreach (StatementNode s in ifs.ElseBody)
             {
                 EmitStatement(s);
             }
@@ -272,8 +290,8 @@ public class SnekCodeGenerator : ICodeGenerator
 
     private void EmitWhile(WhileStatementNode whl)
     {
-        var startLabel = $"_while_{_labelCounter}";
-        var endLabel = $"_endwhile_{_labelCounter++}";
+        string startLabel = $"_while_{_labelCounter}";
+        string endLabel = $"_endwhile_{_labelCounter++}";
 
         _ = _output.AppendLine($"{startLabel}:");
         EmitExpression(whl.Condition);
@@ -281,7 +299,7 @@ public class SnekCodeGenerator : ICodeGenerator
         _ = _output.AppendLine("    test eax, eax");
         _ = _output.AppendLine($"    jz {endLabel}");
 
-        foreach (var s in whl.Body)
+        foreach (StatementNode s in whl.Body)
         {
             EmitStatement(s);
         }
@@ -297,13 +315,16 @@ public class SnekCodeGenerator : ICodeGenerator
             case LiteralExpressionNode lit:
                 EmitLiteral(lit);
                 break;
+
             case IdentifierExpressionNode id:
                 _ = _output.AppendLine($"    ; load {id.Name.Value}");
                 _ = _output.AppendLine("    push 0");
                 break;
+
             case CallExpressionNode call:
                 EmitCall(call);
                 break;
+
             case BinaryExpressionNode bin:
                 EmitBinary(bin);
                 break;
@@ -315,15 +336,18 @@ public class SnekCodeGenerator : ICodeGenerator
         switch (lit.Value.Type)
         {
             case TokenType.StringLiteral:
-                var label = _stringLiterals.First(kvp => kvp.Value == lit.Value.Value).Key;
+                string label = _stringLiterals.First(kvp => kvp.Value == lit.Value.Value).Key;
                 _ = _output.AppendLine($"    push {label}");
                 break;
+
             case TokenType.IntegerLiteral:
                 _ = _output.AppendLine($"    push {lit.Value.Value}");
                 break;
+
             case TokenType.KeywordTrue:
                 _ = _output.AppendLine("    push 1");
                 break;
+
             case TokenType.KeywordFalse:
                 _ = _output.AppendLine("    push 0");
                 break;
@@ -337,7 +361,10 @@ public class SnekCodeGenerator : ICodeGenerator
             EmitExpression(call.Arguments[i]);
         }
 
-        var callee = call.Callee is IdentifierExpressionNode id ? id.Name.Value : "unknown";
+        string callee = call.Callee is IdentifierExpressionNode id
+            ? id.Name.Value
+            : "unknown";
+
         string target;
 
         if (callee == "print")
@@ -345,13 +372,11 @@ public class SnekCodeGenerator : ICodeGenerator
             target = "[printf]";
             _ = _externalFunctions.Add("printf");
         }
-        else if (callee == "main")
-        {
-            target = "_main";
-        }
         else
         {
-            target = _externalFunctions.Contains(callee) ? $"[{callee}]" : callee;
+            target = callee == "main"
+                ? "_main"
+                : _externalFunctions.Contains(callee) ? $"[{callee}]" : callee;
         }
 
         _ = _output.AppendLine($"    call {target}");
@@ -368,6 +393,7 @@ public class SnekCodeGenerator : ICodeGenerator
     {
         EmitExpression(bin.Right);
         EmitExpression(bin.Left);
+
         _ = _output.AppendLine("    pop ebx");
         _ = _output.AppendLine("    pop eax");
 
@@ -376,21 +402,26 @@ public class SnekCodeGenerator : ICodeGenerator
             case TokenType.Plus:
                 _ = _output.AppendLine("    add eax, ebx");
                 break;
+
             case TokenType.Minus:
                 _ = _output.AppendLine("    sub eax, ebx");
                 break;
+
             case TokenType.Star:
                 _ = _output.AppendLine("    imul eax, ebx");
                 break;
+
             case TokenType.DoubleEquals:
                 _ = _output.AppendLine("    cmp eax, ebx");
                 _ = _output.AppendLine("    sete al");
                 _ = _output.AppendLine("    movzx eax, al");
                 break;
+
             default:
                 _ = _output.AppendLine("    ; unsupported binary op");
                 break;
         }
+
         _ = _output.AppendLine("    push eax");
     }
 }

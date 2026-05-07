@@ -4,7 +4,7 @@ namespace Snek.Compiler;
 
 public class Assembler
 {
-    public bool Assemble(string asmPath, string outputDir)
+    public static bool Assemble(string asmPath, string outputDir)
     {
         string fasmPath = Path.Combine(AppContext.BaseDirectory, "fasm", "fasm.exe");
 
@@ -19,7 +19,7 @@ public class Assembler
         {
             Console.WriteLine("Executing FASM assembler...");
 
-            var startInfo = new ProcessStartInfo
+            ProcessStartInfo startInfo = new()
             {
                 FileName = fasmPath,
                 Arguments = $"\"{Path.GetFileName(asmPath)}\"",
@@ -37,7 +37,7 @@ public class Assembler
                 startInfo.EnvironmentVariables["INCLUDE"] = fasmInclude;
             }
 
-            using var process = Process.Start(startInfo);
+            using Process? process = Process.Start(startInfo);
             if (process == null)
             {
                 Console.Error.WriteLine("Failed to start FASM process.");

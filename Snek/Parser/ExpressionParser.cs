@@ -14,19 +14,21 @@ public class ExpressionParser
 
     public ExpressionNode ParseExpression(int precedence = 0)
     {
-        var left = ParsePrimary();
+        ExpressionNode left = ParsePrimary();
 
         while (true)
         {
-            var op = _stream.Current;
+            Token op = _stream.Current;
             int nextPrecedence = GetPrecedence(op.Type);
+
             if (nextPrecedence < precedence)
             {
                 break;
             }
 
             _stream.Advance();
-            var right = ParseExpression(nextPrecedence + 1);
+
+            ExpressionNode right = ParseExpression(nextPrecedence + 1);
             left = new BinaryExpressionNode(left, op, right);
         }
 
@@ -37,18 +39,12 @@ public class ExpressionParser
     {
         if (_stream.Match(TokenType.Identifier))
         {
-            var name = _stream.Previous;
-            if (_stream.Match(TokenType.LeftParen))
-            {
-                return ParseCall(name);
-            }
-
-            if (_stream.Match(TokenType.Dot))
-            {
-                return ParseMemberAccess(name);
-            }
-
-            return _stream.Match(TokenType.LeftBracket) ? ParseIndex(name) : (ExpressionNode)new IdentifierExpressionNode(name);
+            Token name = _stream.Previous;
+            return _stream.Match(TokenType.LeftParen)
+                ? ParseCall(name)
+                : _stream.Match(TokenType.Dot)
+                ? ParseMemberAccess(name)
+                : _stream.Match(TokenType.LeftBracket) ? ParseIndex(name) : new IdentifierExpressionNode(name);
         }
 
         if (_stream.Match(TokenType.StringLiteral) ||
@@ -67,15 +63,15 @@ public class ExpressionParser
 
         if (_stream.Match(TokenType.LeftParen))
         {
-            var expr = ParseExpression();
+            ExpressionNode expr = ParseExpression();
             _ = _stream.Consume(TokenType.RightParen);
             return expr;
         }
 
         if (_stream.Match(TokenType.Minus) || _stream.Match(TokenType.KeywordNot))
         {
-            var op = _stream.Previous;
-            var operand = ParsePrimary();
+            Token op = _stream.Previous;
+            ExpressionNode operand = ParsePrimary();
             return new UnaryExpressionNode(op, operand);
         }
 
@@ -84,41 +80,49 @@ public class ExpressionParser
             return ParseListLiteral();
         }
 
-        _stream.ReportError($"Unexpected token in expression: '{_stream.Current.Type}'", _stream.Current);
+        _stream.ReportError(
+            $"Unexpected token in expression: '{_stream.Current.Type}'",
+            _stream.Current);
+
         _stream.Advance();
-        return new LiteralExpressionNode(new Token(TokenType.Unknown, "unknown", -1, -1));
+
+        return new LiteralExpressionNode(new(TokenType.Unknown, "unknown", -1, -1));
     }
 
     private CallExpressionNode ParseCall(Token callee)
     {
-        var args = new List<ExpressionNode>();
+        List<ExpressionNode> args = [];
+
         if (!_stream.Match(TokenType.RightParen))
         {
             do
             {
                 args.Add(ParseExpression());
             } while (_stream.Match(TokenType.Comma));
+
             _ = _stream.Consume(TokenType.RightParen);
         }
-        return new CallExpressionNode(new IdentifierExpressionNode(callee), args);
+
+        return new(new IdentifierExpressionNode(callee), args);
     }
 
     private MemberAccessExpressionNode ParseMemberAccess(Token obj)
     {
-        var member = _stream.Consume(TokenType.Identifier);
+        Token member = _stream.Consume(TokenType.Identifier);
         return new MemberAccessExpressionNode(new IdentifierExpressionNode(obj), member);
     }
 
     private IndexExpressionNode ParseIndex(Token target)
     {
-        var index = ParseExpression();
+        ExpressionNode index = ParseExpression();
         _ = _stream.Consume(TokenType.RightBracket);
-        return new IndexExpressionNode(new IdentifierExpressionNode(target), index);
+        return new(new IdentifierExpressionNode(target), index);
     }
 
     private ListExpressionNode ParseListLiteral()
     {
-        var elements = new List<ExpressionNode>();
+        List<ExpressionNode> elements = [];
+
         if (!_stream.Match(TokenType.RightBracket))
         {
             do
@@ -127,17 +131,22 @@ public class ExpressionParser
             } while (_stream.Match(TokenType.Comma));
             _ = _stream.Consume(TokenType.RightBracket);
         }
-        return new ListExpressionNode(elements);
+
+        return new(elements);
     }
 
-    private int GetPrecedence(TokenType type)
+    private static int GetPrecedence(TokenType type)
     {
         return type switch
         {
             TokenType.KeywordOr => 1,
             TokenType.KeywordAnd => 2,
-            TokenType.DoubleEquals or TokenType.NotEquals or TokenType.LessThan or TokenType.GreaterThan
-                or TokenType.LessEqual or TokenType.GreaterEqual => 3,
+            TokenType.DoubleEquals
+                or TokenType.NotEquals
+                or TokenType.LessThan
+                or TokenType.GreaterThan
+                or TokenType.LessEqual
+                or TokenType.GreaterEqual => 3,
             TokenType.Plus or TokenType.Minus => 4,
             TokenType.Star or TokenType.Slash or TokenType.Percent => 5,
             TokenType.DoubleStar => 6,

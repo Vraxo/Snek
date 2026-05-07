@@ -21,7 +21,9 @@ public class CompilationContext
 
     public T? GetStageData<T>(string key) where T : class
     {
-        return StageData.TryGetValue(key, out var value) ? value as T : null;
+        return StageData.TryGetValue(key, out object? value)
+            ? value as T
+            : null;
     }
 
     public void SetStageData<T>(string key, T value) where T : class

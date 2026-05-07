@@ -4,10 +4,6 @@ using Snek.Pipeline;
 
 namespace Snek.Parser;
 
-/// <summary>
-/// Orchestrator for the parsing process.
-/// Delegates actual parsing logic to specialized StatementParser and ExpressionParser components.
-/// </summary>
 public class SnekParser : IParser
 {
     private readonly LexerRules _rules;
@@ -19,9 +15,9 @@ public class SnekParser : IParser
 
     public AstNode Parse(IEnumerable<Token> tokens, CompilationContext context)
     {
-        var stream = new ParserStream(tokens, context);
-        var expressionParser = new ExpressionParser(stream);
-        var statementParser = new StatementParser(stream, expressionParser, _rules);
+        ParserStream stream = new(tokens, context);
+        ExpressionParser expressionParser = new(stream);
+        StatementParser statementParser = new(stream, expressionParser, _rules);
 
         return statementParser.ParseProgram();
     }

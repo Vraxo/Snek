@@ -1,4 +1,5 @@
 ﻿using Snek.Analysis;
+using Snek.Ast;
 using Snek.Diagnoistics;
 using Snek.Generation;
 using Snek.Lexer;
@@ -6,10 +7,6 @@ using Snek.Parser;
 
 namespace Snek.Pipeline;
 
-/// <summary>
-/// Modular compilation pipeline where each stage is swappable via dependency injection.
-/// Enables syntax-agnostic compilation by abstracting lexer/parser behind interfaces.
-/// </summary>
 public class CompilerPipeline
 {
     private readonly ILexer _lexer;
@@ -34,7 +31,7 @@ public class CompilerPipeline
 
     public CompilationResult Compile(string source, string sourceName = "<input>")
     {
-        var context = new CompilationContext(sourceName, _options);
+        CompilationContext context = new(sourceName, _options);
 
         try
         {
@@ -44,7 +41,8 @@ public class CompilerPipeline
                 Console.WriteLine($"[{sourceName}] Lexing...");
             }
 
-            var tokens = _lexer.Tokenize(source, context);
+            IEnumerable<Token> tokens = _lexer.Tokenize(source, context);
+
             if (context.Diagnostics.Any(d => d.IsError))
             {
                 return new CompilationResult(context.Diagnostics);
@@ -56,7 +54,7 @@ public class CompilerPipeline
                 Console.WriteLine($"[{sourceName}] Parsing...");
             }
 
-            var ast = _parser.Parse(tokens, context);
+            AstNode ast = _parser.Parse(tokens, context);
             if (context.Diagnostics.Any(d => d.IsError))
             {
                 return new CompilationResult(context.Diagnostics);
@@ -80,30 +78,22 @@ public class CompilerPipeline
                 Console.WriteLine($"[{sourceName}] Generating...");
             }
 
-            var output = _generator.Generate(ast, context);
+            string? output = _generator.Generate(ast, context);
+
             return context.Diagnostics.Any(d => d.IsError)
-                ? new CompilationResult(context.Diagnostics)
-                : new CompilationResult(output, context.Diagnostics);
+                ? new(context.Diagnostics)
+                : new(output, context.Diagnostics);
         }
         catch (Exception ex)
         {
-            context.Diagnostics.Add(new Diagnostic(sourceName, $"Internal compiler error: {ex.Message}", -1, -1, DiagnosticSeverity.Error));
-            return new CompilationResult(context.Diagnostics);
+            context.Diagnostics.Add(new(
+                sourceName,
+                $"Internal compiler error: {ex.Message}",
+                -1,
+                -1,
+                DiagnosticSeverity.Error));
+
+            return new(context.Diagnostics);
         }
     }
-}
-
-public record PipelineOptions
-{
-    public bool EnableLogging { get; set; } = false;
-    public bool EnableOptimizations { get; set; } = false;
-    public TargetPlatform Target { get; set; } = TargetPlatform.X86;
-}
-
-public enum TargetPlatform { X86, X64, WebAssembly }
-
-public record CompilationResult(string? Output, IReadOnlyList<Diagnostic> Diagnostics)
-{
-    public CompilationResult(IReadOnlyList<Diagnostic> diagnostics) : this(null, diagnostics) { }
-    public bool Success => !Diagnostics.Any(d => d.IsError);
 }

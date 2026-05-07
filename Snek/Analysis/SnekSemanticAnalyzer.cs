@@ -5,10 +5,6 @@ using Snek.Pipeline;
 
 namespace Snek.Analysis;
 
-/// <summary>
-/// Reference semantic analyzer for Snek's default type system.
-/// Handles scope resolution, type inference, and basic type checking.
-/// </summary>
 public class SnekSemanticAnalyzer : ISemanticAnalyzer
 {
     private readonly Dictionary<string, SymbolInfo> _globals = [];
@@ -18,30 +14,35 @@ public class SnekSemanticAnalyzer : ISemanticAnalyzer
     public void Analyze(AstNode root, CompilationContext context)
     {
         _context = context;
+
         _globals.Clear();
         _scopes.Clear();
-        _scopes.Push(new Scope(null)); // Global scope
+        _scopes.Push(new(null)); // Global scope
 
-        if (root is ProgramNode program)
+        if (root is not ProgramNode program)
         {
-            // First pass: collect global declarations
-            foreach (var stmt in program.Statements)
+            return;
+        }
+
+        // First pass: collect global declarations
+        foreach (StatementNode stmt in program.Statements)
+        {
+            if (stmt is not FunctionDefNode func)
             {
-                if (stmt is FunctionDefNode func)
-                {
-                    _ = new FunctionType(
-                        func.Name.Value,
-                        func.Parameters,
-                        func.ReturnType?.Name.Value ?? "void");
-                    _globals[func.Name.Value] = new SymbolInfo("function", func.Name.Line, func.Name.Column);
-                }
+                continue;
             }
 
-            // Second pass: analyze function bodies
-            foreach (var stmt in program.Statements)
-            {
-                AnalyzeStatement(stmt, null);
-            }
+            _ = new FunctionType(
+                func.Name.Value,
+                func.Parameters,
+                func.ReturnType?.Name.Value ?? "void");
+            _globals[func.Name.Value] = new("function", func.Name.Line, func.Name.Column);
+        }
+
+        // Second pass: analyze function bodies
+        foreach (StatementNode stmt in program.Statements)
+        {
+            AnalyzeStatement(stmt, null);
         }
     }
 
@@ -99,15 +100,19 @@ public class SnekSemanticAnalyzer : ISemanticAnalyzer
     private void AnalyzeFunction(FunctionDefNode func)
     {
         // Register parameters in local scope
-        foreach (var param in func.Parameters)
+        foreach (ParameterNode param in func.Parameters)
         {
-            var paramType = param.TypeAnnotation?.Name.Value ?? "Any";
-            _scopes.Peek().Symbols[param.Name.Value] = new SymbolInfo(paramType, param.Name.Line, param.Name.Column);
+            string paramType = param.TypeAnnotation?.Name.Value ?? "Any";
+
+            _scopes.Peek().Symbols[param.Name.Value] = new(
+                paramType,
+                param.Name.Line,
+                param.Name.Column);
         }
 
         // Analyze body
-        var returnType = func.ReturnType?.Name.Value ?? "void";
-        foreach (var bodyStmt in func.Body)
+        string returnType = func.ReturnType?.Name.Value ?? "void";
+        foreach (StatementNode bodyStmt in func.Body)
         {
             AnalyzeStatement(bodyStmt, returnType);
         }
@@ -115,10 +120,12 @@ public class SnekSemanticAnalyzer : ISemanticAnalyzer
 
     private void AnalyzeIf(IfStatementNode ifs)
     {
-        var condType = AnalyzeExpression(ifs.Condition);
+        string? condType = AnalyzeExpression(ifs.Condition);
+
         if (condType is not "bool" and not null)
         {
-            var conditionLine = ifs.Condition is IdentifierExpressionNode idExpr ? idExpr.Name.Line : -1;
+            int conditionLine = ifs.Condition is IdentifierExpressionNode idExpr ? idExpr.Name.Line : -1;
+
             _context.Diagnostics.Add(new Diagnostic(
                 _context.SourceName,
                 $"Condition must be bool, got '{condType}'",
@@ -127,31 +134,37 @@ public class SnekSemanticAnalyzer : ISemanticAnalyzer
                 DiagnosticSeverity.Error));
         }
 
-        foreach (var stmt in ifs.ThenBody)
+        foreach (StatementNode stmt in ifs.ThenBody)
         {
             AnalyzeStatement(stmt, null);
         }
 
-        if (ifs.ElseBody != null)
+        if (ifs.ElseBody == null)
         {
-            foreach (var stmt in ifs.ElseBody)
-            {
-                AnalyzeStatement(stmt, null);
-            }
+            return;
+        }
+
+        foreach (StatementNode stmt in ifs.ElseBody)
+        {
+            AnalyzeStatement(stmt, null);
         }
     }
 
     private void AnalyzeWhile(WhileStatementNode whl)
     {
-        var condType = AnalyzeExpression(whl.Condition);
+        string? condType = AnalyzeExpression(whl.Condition);
+
         if (condType is not "bool" and not null)
         {
-            _context.Diagnostics.Add(new Diagnostic(
+            _context.Diagnostics.Add(new(
                 _context.SourceName,
                 $"While condition must be bool, got '{condType}'",
-                -1, -1, DiagnosticSeverity.Error));
+                -1,
+                -1,
+                DiagnosticSeverity.Error));
         }
-        foreach (var stmt in whl.Body)
+
+        foreach (StatementNode stmt in whl.Body)
         {
             AnalyzeStatement(stmt, null);
         }
@@ -159,24 +172,37 @@ public class SnekSemanticAnalyzer : ISemanticAnalyzer
 
     private void AnalyzeReturn(ReturnStatementNode ret, string? expectedReturnType)
     {
-        if (ret.Value != null)
+        if (ret.Value == null)
         {
-            var actualType = AnalyzeExpression(ret.Value);
-            if (expectedReturnType != null && actualType != null && actualType != expectedReturnType && expectedReturnType != "Any")
+            if (expectedReturnType is not null and not "void" and not "Any")
             {
                 _context.Diagnostics.Add(new Diagnostic(
                     _context.SourceName,
-                    $"Return type mismatch: expected '{expectedReturnType}', got '{actualType}'",
-                    -1, -1, DiagnosticSeverity.Error));
+                    $"Non-void function must return a value",
+                    -1,
+                    -1,
+                    DiagnosticSeverity.Error));
             }
+
+            return;
         }
-        else if (expectedReturnType is not null and not "void" and not "Any")
+
+        string? actualType = AnalyzeExpression(ret.Value);
+
+        if (expectedReturnType == null
+            || actualType == null
+            || actualType == expectedReturnType
+            || expectedReturnType == "Any")
         {
-            _context.Diagnostics.Add(new Diagnostic(
-                _context.SourceName,
-                $"Non-void function must return a value",
-                -1, -1, DiagnosticSeverity.Error));
+            return;
         }
+
+        _context.Diagnostics.Add(new(
+            _context.SourceName,
+            $"Return type mismatch: expected '{expectedReturnType}', got '{actualType}'",
+            -1,
+            -1,
+            DiagnosticSeverity.Error));
     }
 
     private string? AnalyzeExpression(ExpressionNode expr)
@@ -203,16 +229,16 @@ public class SnekSemanticAnalyzer : ISemanticAnalyzer
     private string? ResolveIdentifier(IdentifierExpressionNode id)
     {
         // Check local scopes first
-        foreach (var scope in _scopes)
+        foreach (Scope scope in _scopes)
         {
-            if (scope.Symbols.TryGetValue(id.Name.Value, out var info))
+            if (scope.Symbols.TryGetValue(id.Name.Value, out SymbolInfo? info))
             {
                 info.IsRead = true;
                 return info.Type;
             }
         }
         // Check globals
-        if (_globals.TryGetValue(id.Name.Value, out var global))
+        if (_globals.TryGetValue(id.Name.Value, out SymbolInfo? global))
         {
             return global.Type;
         }
@@ -226,6 +252,7 @@ public class SnekSemanticAnalyzer : ISemanticAnalyzer
     private string? ResolveCallType(CallExpressionNode call)
     {
         string? calleeName = null;
+
         if (call.Callee is IdentifierExpressionNode callId)
         {
             calleeName = callId.Name.Value;
@@ -237,22 +264,22 @@ public class SnekSemanticAnalyzer : ISemanticAnalyzer
         }
 
         // Check if it's a known function
-        if (_globals.TryGetValue(calleeName, out var funcInfo))
+        if (_globals.TryGetValue(calleeName, out SymbolInfo? funcInfo)
+            && funcInfo.Type == "function"
+            && funcInfo.Metadata is FunctionType ft)
         {
-            if (funcInfo.Type == "function" && funcInfo.Metadata is FunctionType ft)
+            // Basic arity check
+            if (call.Arguments.Count != ft.Parameters.Count)
             {
-                // Basic arity check
-                if (call.Arguments.Count != ft.Parameters.Count)
-                {
-                    int callLine = call.Callee is IdentifierExpressionNode cid ? cid.Name.Line : -1;
-                    _context.Diagnostics.Add(new Diagnostic(
-                        _context.SourceName,
-                        $"Function '{calleeName}' expects {ft.Parameters.Count} args, got {call.Arguments.Count}",
-                        callLine, -1,
-                        DiagnosticSeverity.Error));
-                }
-                return ft.ReturnType;
+                int callLine = call.Callee is IdentifierExpressionNode cid ? cid.Name.Line : -1;
+                _context.Diagnostics.Add(new Diagnostic(
+                    _context.SourceName,
+                    $"Function '{calleeName}' expects {ft.Parameters.Count} args, got {call.Arguments.Count}",
+                    callLine, -1,
+                    DiagnosticSeverity.Error));
             }
+
+            return ft.ReturnType;
         }
 
         // Built-in: print returns NoneType
@@ -261,21 +288,26 @@ public class SnekSemanticAnalyzer : ISemanticAnalyzer
             return "NoneType";
         }
 
-        _context.Diagnostics.Add(new Diagnostic(
+        _context.Diagnostics.Add(new(
             _context.SourceName,
             $"Undefined function '{calleeName}'",
             call.Callee is IdentifierExpressionNode callIdent ? callIdent.Name.Line : -1, -1,
             DiagnosticSeverity.Error));
+
         return null;
     }
 
     private string? ResolveBinaryType(BinaryExpressionNode bin)
     {
-        var left = AnalyzeExpression(bin.Left);
-        var right = AnalyzeExpression(bin.Right);
+        string? left = AnalyzeExpression(bin.Left);
+        string? right = AnalyzeExpression(bin.Right);
 
         // Arithmetic ops: int/float promotion
-        if (bin.Operator.Type is TokenType.Plus or TokenType.Minus or TokenType.Star or TokenType.Slash)
+        if (bin.Operator.Type
+            is TokenType.Plus
+            or TokenType.Minus
+            or TokenType.Star
+            or TokenType.Slash)
         {
             if (left == "float" || right == "float")
             {
@@ -289,50 +321,35 @@ public class SnekSemanticAnalyzer : ISemanticAnalyzer
         }
 
         // Comparison ops: always bool
-        if (bin.Operator.Type is TokenType.DoubleEquals or TokenType.NotEquals
-            or TokenType.LessThan or TokenType.GreaterThan or TokenType.LessEqual or TokenType.GreaterEqual)
+        if (bin.Operator.Type
+            is TokenType.DoubleEquals
+            or TokenType.NotEquals
+            or TokenType.LessThan
+            or TokenType.GreaterThan
+            or TokenType.LessEqual
+            or TokenType.GreaterEqual)
         {
             return "bool";
         }
 
         // String concat
-        return bin.Operator.Type == TokenType.Plus && left == "string" && right == "string" ? "string" : "Any";
+        return bin.Operator.Type == TokenType.Plus
+            && left == "string"
+            && right == "string" ? "string" : "Any";
     }
 
     private SymbolInfo? LookupSymbol(string name)
     {
-        foreach (var scope in _scopes)
+        foreach (Scope scope in _scopes)
         {
-            if (scope.Symbols.TryGetValue(name, out var info))
+            if (scope.Symbols.TryGetValue(name, out SymbolInfo? info))
             {
                 return info;
             }
         }
 
-        return _globals.TryGetValue(name, out var global) ? global : null;
-    }
-}
-
-public record SymbolInfo(string Type, int Line, int Column, object? Metadata = null)
-{
-    public bool IsRead { get; set; } = false;
-    public bool IsWritten { get; set; } = false;
-}
-
-public record FunctionType(string Name, List<ParameterNode> Parameters, string ReturnType)
-{
-    public override string ToString()
-    {
-        return $"fn({string.Join(", ", Parameters)}) -> {ReturnType}";
-    }
-}
-
-public class Scope
-{
-    public Scope? Parent { get; }
-    public Dictionary<string, SymbolInfo> Symbols { get; } = [];
-    public Scope(Scope? parent)
-    {
-        Parent = parent;
+        return _globals.TryGetValue(name, out SymbolInfo? global)
+            ? global
+            : null;
     }
 }

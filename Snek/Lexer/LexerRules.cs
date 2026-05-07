@@ -1,8 +1,5 @@
 ﻿namespace Snek.Lexer;
 
-///  <summary >
-/// Declarative rules for token recognition. Enables syntax customization without code changes.
-///  </summary >
 public class LexerRules
 {
     public Dictionary<string, TokenType> Keywords { get; } = [];
@@ -91,12 +88,9 @@ public class LexerRules
         Operators.Add(("^", TokenType.Caret));
     }
 
-    ///  <summary >
-    /// Creates a rule set for C-style syntax (fn main() -> void { ... })
-    ///  </summary >
     public static LexerRules CreateCStyle()
     {
-        var rules = new LexerRules
+        LexerRules rules = new()
         {
             SupportsIndentation = false,
             StringDelimiter = '"',
@@ -106,12 +100,9 @@ public class LexerRules
         return rules;
     }
 
-    ///  <summary >
-    /// Creates a rule set for Python-style syntax (def main(): ...)
-    ///  </summary >
     public static LexerRules CreatePythonStyle()
     {
-        var rules = new LexerRules();
+        LexerRules rules = new();
         rules.Keywords["def"] = TokenType.KeywordDef;
         return rules;
     }

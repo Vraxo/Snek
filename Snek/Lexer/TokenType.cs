@@ -1,8 +1,5 @@
 ﻿namespace Snek.Lexer;
 
-/// <summary>
-/// Token categories. Extensible for syntax variants via partial classes or enums.
-/// </summary>
 public enum TokenType
 {
     // Structural

@@ -3,22 +3,15 @@ using Snek.Pipeline;
 
 namespace Snek.Parser;
 
-/// <summary>
-/// Extension methods for token stream parsing patterns.
-/// Keeps parser implementations clean and reusable.
-/// </summary>
 public static class ParserExtensions
 {
-    /// <summary>
-    /// Parses a comma-separated list of items until the terminator token.
-    /// </summary>
     public static List<T> ParseCommaSeparated<T>(
         this IEnumerator<Token> tokens,
         TokenType terminator,
         Func<Token, CompilationContext, T> parseItem,
         CompilationContext context)
     {
-        var items = new List<T>();
+        List<T> items = [];
         if (tokens.Current?.Type == terminator)
         {
             return items;
@@ -38,10 +31,6 @@ public static class ParserExtensions
         return items;
     }
 
-    /// <summary>
-    /// Skips tokens until a synchronization point (newline, dedent, or specific token).
-    /// Used for error recovery.
-    /// </summary>
     public static void SkipToSyncPoint(
         this IEnumerator<Token> tokens,
         params TokenType[] syncPoints)
@@ -53,12 +42,10 @@ public static class ParserExtensions
         }
     }
 
-    /// <summary>
-    /// Peeks ahead N tokens without consuming them.
-    /// </summary>
     public static Token? Peek(this IEnumerator<Token> tokens, int offset = 0)
     {
         _ = tokens.Current;
+
         for (int i = 0; i <= offset && tokens.MoveNext(); i++)
         {
             if (i == offset)
@@ -66,6 +53,7 @@ public static class ParserExtensions
                 return tokens.Current;
             }
         }
+
         return null;
     }
 }

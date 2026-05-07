@@ -33,7 +33,7 @@ public class SnekLexer : ILexer
         _indentStack.Clear();
         _indentStack.Push(0);
 
-        var tokens = new List<Token>();
+        List<Token> tokens = [];
 
         while (!IsAtEnd())
         {
@@ -43,8 +43,8 @@ public class SnekLexer : ILexer
                 break;
             }
 
-            var startLine = _line;
-            var startColumn = _column;
+            int startLine = _line;
+            int startColumn = _column;
 
             if (TryReadKeywordOrIdentifier(tokens))
             {
@@ -98,7 +98,7 @@ public class SnekLexer : ILexer
 
     private char Advance()
     {
-        var c = _source[_position++];
+        char c = _source[_position++];
         if (c == '\n') { _line++; _column = 1; }
         else { _column++; }
         return c;
@@ -108,9 +108,22 @@ public class SnekLexer : ILexer
     {
         while (!IsAtEnd())
         {
-            var c = Peek();
-            if (char.IsWhiteSpace(c) && c != '\n') { _ = Advance(); continue; }
-            if (c == '#') { while (!IsAtEnd() && Peek() != '\n') { _ = Advance(); } continue; }
+            char c = Peek();
+
+            if (char.IsWhiteSpace(c) && c != '\n')
+            {
+                _ = Advance(); continue;
+            }
+
+            if (c == '#')
+            {
+                while (!IsAtEnd() && Peek() != '\n')
+                {
+                    _ = Advance();
+                }
+                continue;
+            }
+
             break;
         }
     }
@@ -122,17 +135,17 @@ public class SnekLexer : ILexer
             return false;
         }
 
-        var startLine = _line;
-        var startColumn = _column;
-        var sb = new StringBuilder();
+        int startLine = _line;
+        int startColumn = _column;
+        StringBuilder sb = new();
 
         while (!IsAtEnd() && (char.IsLetterOrDigit(Peek()) || Peek() == '_' || _rules.IdentifierContinueChars.Contains(Peek())))
         {
             _ = sb.Append(Advance());
         }
 
-        var value = sb.ToString();
-        var type = _rules.Keywords.TryGetValue(value, out var keywordType) ? keywordType : TokenType.Identifier;
+        string value = sb.ToString();
+        TokenType type = _rules.Keywords.TryGetValue(value, out TokenType keywordType) ? keywordType : TokenType.Identifier;
         tokens.Add(new Token(type, value, startLine, startColumn));
         return true;
     }
@@ -144,9 +157,9 @@ public class SnekLexer : ILexer
             return false;
         }
 
-        var startLine = _line;
-        var startColumn = _column;
-        var sb = new StringBuilder();
+        int startLine = _line;
+        int startColumn = _column;
+        StringBuilder sb = new();
         bool isFloat = false;
 
         // Integer part
@@ -182,29 +195,30 @@ public class SnekLexer : ILexer
             }
         }
 
-        var value = sb.ToString();
-        var type = isFloat ? TokenType.FloatLiteral : TokenType.IntegerLiteral;
+        string value = sb.ToString();
+        TokenType type = isFloat ? TokenType.FloatLiteral : TokenType.IntegerLiteral;
         tokens.Add(new Token(type, value, startLine, startColumn));
         return true;
     }
 
     private bool TryReadString(List<Token> tokens)
     {
-        var c = Peek();
+        char c = Peek();
         if (c != _rules.StringDelimiter && c != _rules.CharDelimiter)
         {
             return false;
         }
 
-        var startLine = _line;
-        var startColumn = _column;
-        var delimiter = Advance(); // consume opening quote
-        var isChar = delimiter == _rules.CharDelimiter;
-        var sb = new StringBuilder();
+        int startLine = _line;
+        int startColumn = _column;
+        char delimiter = Advance(); // consume opening quote
+        bool isChar = delimiter == _rules.CharDelimiter;
+        StringBuilder sb = new();
 
         while (!IsAtEnd() && Peek() != delimiter)
         {
-            var ch = Advance();
+            char ch = Advance();
+
             if (ch == '\\')
             {
                 if (IsAtEnd())
@@ -212,7 +226,7 @@ public class SnekLexer : ILexer
                     break;
                 }
 
-                var escaped = Advance();
+                char escaped = Advance();
                 _ = sb.Append(escaped switch
                 {
                     'n' => '\n',
@@ -237,7 +251,7 @@ public class SnekLexer : ILexer
         }
         _ = Advance(); // consume closing quote
 
-        var type = isChar ? TokenType.CharLiteral : TokenType.StringLiteral;
+        TokenType type = isChar ? TokenType.CharLiteral : TokenType.StringLiteral;
         tokens.Add(new Token(type, sb.ToString(), startLine, startColumn));
         return true;
     }
@@ -245,30 +259,32 @@ public class SnekLexer : ILexer
     private bool TryReadOperator(List<Token> tokens)
     {
         // Try longest operators first
-        foreach (var (pattern, type) in _rules.Operators.OrderByDescending(o => o.Pattern.Length))
+        foreach ((string? pattern, TokenType type) in _rules.Operators.OrderByDescending(o => o.Pattern.Length))
         {
-            if (MatchString(pattern))
+            if (!MatchString(pattern))
             {
-                var startLine = _line;
-                var startColumn = _column;
-                // Advance past the matched pattern
-                for (int i = 0; i < pattern.Length; i++)
-                {
-                    _ = Advance();
-                }
-
-                tokens.Add(new Token(type, pattern, startLine, startColumn));
-                return true;
+                continue;
             }
+
+            int startLine = _line;
+            int startColumn = _column;
+            // Advance past the matched pattern
+            for (int i = 0; i < pattern.Length; i++)
+            {
+                _ = Advance();
+            }
+
+            tokens.Add(new Token(type, pattern, startLine, startColumn));
+            return true;
         }
         return false;
     }
 
     private bool TryReadStructural(List<Token> tokens)
     {
-        var c = Peek();
-        var startLine = _line;
-        var startColumn = _column;
+        char c = Peek();
+        int startLine = _line;
+        int startColumn = _column;
 
         if (c == '\n')
         {
@@ -281,7 +297,7 @@ public class SnekLexer : ILexer
         if (c is '(' or ')' or '[' or ']' or '{' or '}' or ',' or '.' or ':')
         {
             _ = Advance();
-            var type = c switch
+            TokenType type = c switch
             {
                 '(' => TokenType.LeftParen,
                 ')' => TokenType.RightParen,
@@ -314,11 +330,11 @@ public class SnekLexer : ILexer
         tokens.Add(new Token(TokenType.Newline, "", line, column));
 
         // Calculate indentation of next non-empty line
-        var indent = 0;
-        var tempPos = _position;
+        int indent = 0;
+        int tempPos = _position;
         while (tempPos < _source.Length)
         {
-            var c = _source[tempPos];
+            char c = _source[tempPos];
             if (c == ' ') { indent++; tempPos++; }
             else if (c == '\t') { indent += _rules.TabWidth; tempPos++; }
             else if (c == '\n') { indent = 0; tempPos++; }
@@ -335,19 +351,19 @@ public class SnekLexer : ILexer
             }
         }
 
-        var currentIndent = _indentStack.Peek();
+        int currentIndent = _indentStack.Peek();
 
         if (indent > currentIndent)
         {
             _indentStack.Push(indent);
-            tokens.Add(new Token(TokenType.Indent, "", line, column));
+            tokens.Add(new(TokenType.Indent, "", line, column));
         }
         else if (indent < currentIndent)
         {
             while (_indentStack.Count > 1 && _indentStack.Peek() > indent)
             {
                 _ = _indentStack.Pop();
-                tokens.Add(new Token(TokenType.Dedent, "", line, column));
+                tokens.Add(new(TokenType.Dedent, "", line, column));
             }
             if (_indentStack.Peek() != indent)
             {
@@ -365,10 +381,12 @@ public class SnekLexer : ILexer
 
         for (int i = 0; i < expected.Length; i++)
         {
-            if (_source[_position + i] != expected[i])
+            if (_source[_position + i] == expected[i])
             {
-                return false;
+                continue;
             }
+
+            return false;
         }
 
         return true;
@@ -376,6 +394,11 @@ public class SnekLexer : ILexer
 
     private void ReportError(string message, int line, int column)
     {
-        _context?.Diagnostics.Add(new Diagnostic(_context.SourceName, message, line, column, DiagnosticSeverity.Error));
+        _context?.Diagnostics.Add(new(
+            _context.SourceName,
+            message,
+            line,
+            column,
+            DiagnosticSeverity.Error));
     }
 }

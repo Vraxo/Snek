@@ -12,7 +12,7 @@ public abstract record AstNode
     /// </summary>
     public IEnumerable<AstNode> Ancestors()
     {
-        var current = Parent;
+        AstNode? current = Parent;
         while (current is not null)
         {
             yield return current;
@@ -28,8 +28,3 @@ public abstract record AstNode
         return Ancestors().OfType<T>().FirstOrDefault();
     }
 }
-
-// Placeholder for concrete node types to be added in subsequent iterations
-public abstract record StatementNode : AstNode;
-public abstract record ExpressionNode : AstNode;
-public abstract record DeclarationNode : AstNode;

@@ -16,32 +16,38 @@ public class ParserStream
     {
         _tokens = tokens.GetEnumerator();
         _context = context;
-        Current = new Token(TokenType.Eof, " ", -1, -1);
+        Current = new(TokenType.Eof, " ", -1, -1);
         Previous = Current;
+
         Advance(); // Initialize Current
     }
 
     public void Advance()
     {
         Previous = Current;
-        Current = _tokens.MoveNext() ? _tokens.Current : new Token(TokenType.Eof, " ", -1, -1);
+
+        Current = _tokens.MoveNext()
+            ? _tokens.Current
+            : new(TokenType.Eof, " ", -1, -1);
     }
 
     public bool Match(TokenType type)
     {
-        if (Current.Type == type)
+        if (Current.Type != type)
         {
-            Advance();
-            return true;
+            return false;
         }
-        return false;
+
+        Advance();
+
+        return true;
     }
 
     public Token Consume(TokenType type)
     {
         if (Current.Type == type)
         {
-            var token = Current;
+            Token token = Current;
             Advance();
             return token;
         }
@@ -52,7 +58,7 @@ public class ParserStream
 
     public void ReportError(string message, Token atToken)
     {
-        _context.Diagnostics.Add(new Diagnostic(
+        _context.Diagnostics.Add(new(
             _context.SourceName,
             message,
             atToken.Line,

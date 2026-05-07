@@ -1,5 +1,6 @@
 ﻿using Snek.Analysis;
 using Snek.Compiler;
+using Snek.Diagnoistics;
 using Snek.Generation;
 using Snek.Lexer;
 using Snek.Parser;
@@ -23,8 +24,8 @@ public class Program
             return;
         }
 
-        var inputPath = args[0];
-        var options = ParseOptions(args);
+        string inputPath = args[0];
+        CompilerOptions options = ParseOptions(args);
 
         if (!File.Exists(inputPath))
         {
@@ -32,53 +33,59 @@ public class Program
             return;
         }
 
-        var source = File.ReadAllText(inputPath);
-        var pipelineOptions = new PipelineOptions { EnableLogging = options.Verbose };
+        string source = File.ReadAllText(inputPath);
+        PipelineOptions pipelineOptions = new() { EnableLogging = options.Verbose };
 
-        var lexerRules = GetLexerRules(options.Syntax);
-        var lexer = new SnekLexer(lexerRules);
-        var parser = new SnekParser(lexerRules);
-        var analyzer = new SnekSemanticAnalyzer();
-        var generator = new SnekCodeGenerator();
+        LexerRules lexerRules = GetLexerRules(options.Syntax);
+        SnekLexer lexer = new(lexerRules);
+        SnekParser parser = new(lexerRules);
+        SnekSemanticAnalyzer analyzer = new();
+        SnekCodeGenerator generator = new();
 
-        var pipeline = new CompilerPipeline(lexer, parser, analyzer, generator, pipelineOptions);
-        var result = pipeline.Compile(source, inputPath);
+        CompilerPipeline pipeline = new(lexer, parser, analyzer, generator, pipelineOptions);
+        CompilationResult result = pipeline.Compile(source, inputPath);
 
         if (!result.Success)
         {
-            foreach (var diag in result.Diagnostics)
+            foreach (Diagnostic diag in result.Diagnostics)
             {
                 Console.Error.WriteLine(diag.ToString());
             }
+
             return;
         }
 
-        var asmOutputPath = options.OutputPath ?? "output.asm";
-        var exeOutputPath = options.OutputPath?.Replace(".asm", ".exe") ?? "output.exe";
+        string asmOutputPath = options.OutputPath ?? "output.asm";
+
+        string exeOutputPath = options.OutputPath?.Replace(".asm", ".exe")
+            ?? "output.exe";
 
         File.WriteAllText(asmOutputPath, result.Output ?? string.Empty);
         Console.WriteLine($"Assembly generated: {asmOutputPath}");
 
-        if (!options.AsmOnly)
+        if (options.AsmOnly)
         {
-            var asmDirectory = Path.GetDirectoryName(Path.GetFullPath(asmOutputPath)) ?? ".";
-            var assembler = new Assembler();
+            return;
+        }
 
-            if (assembler.Assemble(asmOutputPath, asmDirectory))
-            {
-                Console.WriteLine($"Executable created: {exeOutputPath}");
-            }
-            else
-            {
-                Console.Error.WriteLine("Assembly failed. Check FASM output above.");
-                return;
-            }
+        string asmDirectory = Path.GetDirectoryName(Path.GetFullPath(asmOutputPath)) ?? ".";
+        _ = new Assembler();
+
+        if (Assembler.Assemble(asmOutputPath, asmDirectory))
+        {
+            Console.WriteLine($"Executable created: {exeOutputPath}");
+        }
+        else
+        {
+            Console.Error.WriteLine("Assembly failed. Check FASM output above.");
+            return;
         }
     }
 
     private static CompilerOptions ParseOptions(string[] args)
     {
-        var options = new CompilerOptions();
+        CompilerOptions options = new();
+
         for (int i = 1; i < args.Length; i++)
         {
             switch (args[i])
@@ -89,15 +96,18 @@ public class Program
                         options.OutputPath = args[++i];
                     }
                     break;
+
                 case "--syntax":
                     if (i + 1 < args.Length)
                     {
                         options.Syntax = args[++i];
                     }
                     break;
+
                 case "--verbose":
                     options.Verbose = true;
                     break;
+
                 case "--asm-only":
                     options.AsmOnly = true;
                     break;
@@ -112,15 +122,7 @@ public class Program
         {
             "cstyle" => LexerRules.CreateCStyle(),
             "python" => LexerRules.CreatePythonStyle(),
-            _ => new LexerRules()
+            _ => new()
         };
     }
-}
-
-public record CompilerOptions
-{
-    public string? OutputPath { get; set; }
-    public string? Syntax { get; set; }
-    public bool Verbose { get; set; }
-    public bool AsmOnly { get; set; }
 }

@@ -15,9 +15,10 @@ public record Diagnostic(
 
     public override string ToString()
     {
-        var prefix = Severity == DiagnosticSeverity.Error ? "error" : "warning";
+        string prefix = Severity == DiagnosticSeverity.Error
+            ? "error"
+            : "warning";
+
         return $"{SourceName}({Line},{Column}): {prefix}: {Message}";
     }
 }
-
-public enum DiagnosticSeverity { Error, Warning }
