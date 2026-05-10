@@ -71,7 +71,11 @@ public class CompilerPipelineTests
     {
         var options = new PipelineOptions { EnableLogging = true };
         var pipeline = CreateDefaultPipeline(options);
-        var source = "fn main() -> void: pass";
+        var source = """
+            fn main() -> void:
+              pass
+
+            """;
 
         var result = pipeline.Compile(source, "test.snek");
 
