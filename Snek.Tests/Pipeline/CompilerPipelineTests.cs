@@ -105,10 +105,10 @@ public class CompilerPipelineTests
     private CompilerPipeline CreateDefaultPipeline(PipelineOptions? options = null)
     {
         return new CompilerPipeline(
-            new SnekLexer(),
-            new SnekParser(),
-            new SnekSemanticAnalyzer(),
-            new SnekCodeGenerator(),
+            new Snek.Lexer.Lexer(),
+            new Snek.Parser.Parser(),
+            new SemanticAnalyzer(),
+            new CodeGenerator(),
             options);
     }
 }

@@ -12,6 +12,7 @@ public static class ParserExtensions
         CompilationContext context)
     {
         List<T> items = [];
+
         if (tokens.Current?.Type == terminator)
         {
             return items;
@@ -25,7 +26,7 @@ public static class ParserExtensions
             }
 
             items.Add(parseItem(tokens.Current, context));
-            _ = tokens.MoveNext();
+            tokens.MoveNext();
         } while (tokens.Current?.Type == TokenType.Comma);
 
         return items;
@@ -38,7 +39,7 @@ public static class ParserExtensions
         while (tokens.Current?.Type is not (TokenType.Eof or TokenType.Newline or TokenType.Dedent)
                && !syncPoints.Contains(tokens.Current.Type))
         {
-            _ = tokens.MoveNext();
+            tokens.MoveNext();
         }
     }
 

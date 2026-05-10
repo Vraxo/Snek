@@ -40,11 +40,29 @@ public class ExpressionParser
         if (_stream.Match(TokenType.Identifier))
         {
             Token name = _stream.Previous;
-            return _stream.Match(TokenType.LeftParen)
-                ? ParseCall(name)
-                : _stream.Match(TokenType.Dot)
-                ? ParseMemberAccess(name)
-                : _stream.Match(TokenType.LeftBracket) ? ParseIndex(name) : new IdentifierExpressionNode(name);
+
+            if (_stream.Match(TokenType.LeftParen))
+            {
+                return ParseCall(name);
+            }
+            else
+            {
+                if (_stream.Match(TokenType.Dot))
+                {
+                    return ParseMemberAccess(name);
+                }
+                else
+                {
+                    if (_stream.Match(TokenType.LeftBracket))
+                    {
+                        return ParseIndex(name);
+                    }
+                    else
+                    {
+                        return new IdentifierExpressionNode(name);
+                    }
+                }
+            }
         }
 
         if (_stream.Match(TokenType.StringLiteral) ||
@@ -64,7 +82,7 @@ public class ExpressionParser
         if (_stream.Match(TokenType.LeftParen))
         {
             ExpressionNode expr = ParseExpression();
-            _ = _stream.Consume(TokenType.RightParen);
+            _stream.Consume(TokenType.RightParen);
             return expr;
         }
 
@@ -100,7 +118,7 @@ public class ExpressionParser
                 args.Add(ParseExpression());
             } while (_stream.Match(TokenType.Comma));
 
-            _ = _stream.Consume(TokenType.RightParen);
+            _stream.Consume(TokenType.RightParen);
         }
 
         return new(new IdentifierExpressionNode(callee), args);
@@ -115,7 +133,7 @@ public class ExpressionParser
     private IndexExpressionNode ParseIndex(Token target)
     {
         ExpressionNode index = ParseExpression();
-        _ = _stream.Consume(TokenType.RightBracket);
+        _stream.Consume(TokenType.RightBracket);
         return new(new IdentifierExpressionNode(target), index);
     }
 
@@ -129,7 +147,7 @@ public class ExpressionParser
             {
                 elements.Add(ParseExpression());
             } while (_stream.Match(TokenType.Comma));
-            _ = _stream.Consume(TokenType.RightBracket);
+            _stream.Consume(TokenType.RightBracket);
         }
 
         return new(elements);

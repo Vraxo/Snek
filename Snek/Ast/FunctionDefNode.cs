@@ -2,7 +2,6 @@
 
 namespace Snek.Ast;
 
-// Statements
 public record FunctionDefNode(
     Token Name,
     List<ParameterNode> Parameters,

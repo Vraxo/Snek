@@ -4,11 +4,7 @@ using System.Text;
 
 namespace Snek.Lexer;
 
-/// <summary>
-/// Reference lexer for Snek's default Python-like syntax.
-/// Pluggable via ILexer interface for syntax variants.
-/// </summary>
-public class SnekLexer : ILexer
+public class Lexer : ILexer
 {
     private readonly LexerRules _rules;
     private string _source = string.Empty;
@@ -18,9 +14,9 @@ public class SnekLexer : ILexer
     private CompilationContext? _context;
     private readonly Stack<int> _indentStack = new();
 
-    public SnekLexer(LexerRules? rules = null)
+    public Lexer(LexerRules? rules = null)
     {
-        _rules = rules ?? new LexerRules();
+        _rules = rules ?? new();
     }
 
     public IEnumerable<Token> Tokenize(string source, CompilationContext context)
@@ -72,13 +68,13 @@ public class SnekLexer : ILexer
             }
 
             ReportError($"Unexpected character '{Peek()}'", startLine, startColumn);
-            _ = Advance();
+            Advance();
         }
 
         // Emit dedents to close all indentation levels
         while (_indentStack.Count > 1)
         {
-            _ = _indentStack.Pop();
+            _indentStack.Pop();
             tokens.Add(new Token(TokenType.Dedent, "", _line, _column));
         }
 
@@ -112,14 +108,14 @@ public class SnekLexer : ILexer
 
             if (char.IsWhiteSpace(c) && c != '\n')
             {
-                _ = Advance(); continue;
+                Advance(); continue;
             }
 
             if (c == '#')
             {
                 while (!IsAtEnd() && Peek() != '\n')
                 {
-                    _ = Advance();
+                    Advance();
                 }
                 continue;
             }
@@ -141,7 +137,7 @@ public class SnekLexer : ILexer
 
         while (!IsAtEnd() && (char.IsLetterOrDigit(Peek()) || Peek() == '_' || _rules.IdentifierContinueChars.Contains(Peek())))
         {
-            _ = sb.Append(Advance());
+            sb.Append(Advance());
         }
 
         string value = sb.ToString();
@@ -165,17 +161,17 @@ public class SnekLexer : ILexer
         // Integer part
         while (char.IsDigit(Peek()))
         {
-            _ = sb.Append(Advance());
+            sb.Append(Advance());
         }
 
         // Fractional part
         if (Peek() == '.' && char.IsDigit(Peek(1)))
         {
             isFloat = true;
-            _ = sb.Append(Advance()); // .
+            sb.Append(Advance()); // .
             while (char.IsDigit(Peek()))
             {
-                _ = sb.Append(Advance());
+                sb.Append(Advance());
             }
         }
 
@@ -183,15 +179,15 @@ public class SnekLexer : ILexer
         if (Peek() is 'e' or 'E')
         {
             isFloat = true;
-            _ = sb.Append(Advance());
+            sb.Append(Advance());
             if (Peek() is '+' or '-')
             {
-                _ = sb.Append(Advance());
+                sb.Append(Advance());
             }
 
             while (char.IsDigit(Peek()))
             {
-                _ = sb.Append(Advance());
+                sb.Append(Advance());
             }
         }
 
@@ -227,7 +223,7 @@ public class SnekLexer : ILexer
                 }
 
                 char escaped = Advance();
-                _ = sb.Append(escaped switch
+                sb.Append(escaped switch
                 {
                     'n' => '\n',
                     't' => '\t',
@@ -240,7 +236,7 @@ public class SnekLexer : ILexer
             }
             else
             {
-                _ = sb.Append(ch);
+                sb.Append(ch);
             }
         }
 
@@ -249,7 +245,7 @@ public class SnekLexer : ILexer
             ReportError("Unterminated string literal", startLine, startColumn);
             return true;
         }
-        _ = Advance(); // consume closing quote
+        Advance(); // consume closing quote
 
         TokenType type = isChar ? TokenType.CharLiteral : TokenType.StringLiteral;
         tokens.Add(new Token(type, sb.ToString(), startLine, startColumn));
@@ -271,7 +267,7 @@ public class SnekLexer : ILexer
             // Advance past the matched pattern
             for (int i = 0; i < pattern.Length; i++)
             {
-                _ = Advance();
+                Advance();
             }
 
             tokens.Add(new Token(type, pattern, startLine, startColumn));
@@ -288,7 +284,7 @@ public class SnekLexer : ILexer
 
         if (c == '\n')
         {
-            _ = Advance();
+            Advance();
             HandleNewline(tokens, startLine, startColumn);
             return true;
         }
@@ -296,7 +292,7 @@ public class SnekLexer : ILexer
         // Single-char structural tokens not in operators list
         if (c is '(' or ')' or '[' or ']' or '{' or '}' or ',' or '.' or ':')
         {
-            _ = Advance();
+            Advance();
             TokenType type = c switch
             {
                 '(' => TokenType.LeftParen,
@@ -362,7 +358,7 @@ public class SnekLexer : ILexer
         {
             while (_indentStack.Count > 1 && _indentStack.Peek() > indent)
             {
-                _ = _indentStack.Pop();
+                _indentStack.Pop();
                 tokens.Add(new(TokenType.Dedent, "", line, column));
             }
             if (_indentStack.Peek() != indent)

@@ -6,21 +6,21 @@ using Snek.Pipeline;
 
 namespace Snek.Tests.Analysis;
 
-public class SnekSemanticAnalyzerTests
+public class SemanticAnalyzerTests
 {
-    private readonly SnekSemanticAnalyzer _analyzer;
+    private readonly SemanticAnalyzer _analyzer;
     private readonly CompilationContext _context;
 
-    public SnekSemanticAnalyzerTests()
+    public SemanticAnalyzerTests()
     {
-        _analyzer = new SnekSemanticAnalyzer();
+        _analyzer = new SemanticAnalyzer();
         _context = new CompilationContext("test.snek", new PipelineOptions());
     }
 
     private void AnalyzeSource(string source)
     {
-        var lexer = new SnekLexer();
-        var parser = new SnekParser();
+        var lexer = new Snek.Lexer.Lexer();
+        var parser = new Snek.Parser.Parser();
         var tokens = lexer.Tokenize(source, _context);
         var ast = parser.Parse(tokens, _context);
         _analyzer.Analyze(ast, _context);

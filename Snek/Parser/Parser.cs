@@ -4,13 +4,13 @@ using Snek.Pipeline;
 
 namespace Snek.Parser;
 
-public class SnekParser : IParser
+public class Parser : IParser
 {
     private readonly LexerRules _rules;
 
-    public SnekParser(LexerRules? rules = null)
+    public Parser(LexerRules? rules = null)
     {
-        _rules = rules ?? new LexerRules();
+        _rules = rules ?? new();
     }
 
     public AstNode Parse(IEnumerable<Token> tokens, CompilationContext context)

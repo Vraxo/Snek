@@ -88,18 +88,6 @@ public class LexerRules
         Operators.Add(("^", TokenType.Caret));
     }
 
-    public static LexerRules CreateCStyle()
-    {
-        LexerRules rules = new()
-        {
-            SupportsIndentation = false,
-            StringDelimiter = '"',
-            CharDelimiter = '\''
-        };
-        // Reuse keywords, just change structural expectations in parser
-        return rules;
-    }
-
     public static LexerRules CreatePythonStyle()
     {
         LexerRules rules = new();

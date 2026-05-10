@@ -103,7 +103,7 @@ public class StatementParser
     private FunctionDefNode ParseFunctionDef()
     {
         Token name = _stream.Consume(TokenType.Identifier);
-        _ = _stream.Consume(TokenType.LeftParen);
+        _stream.Consume(TokenType.LeftParen);
         List<ParameterNode> parameters = ParseParameters();
 
         TypeNode? returnType = null;
@@ -113,7 +113,7 @@ public class StatementParser
             returnType = ParseTypeAnnotation();
         }
 
-        _ = _stream.Consume(TokenType.Colon);
+        _stream.Consume(TokenType.Colon);
         ExpectNewline();
 
         int bodyIndent = _expectedIndent + _rules.TabWidth;
@@ -149,22 +149,34 @@ public class StatementParser
                 defaultValue = _expressions.ParseExpression();
             }
 
-            parameters.Add(new ParameterNode(paramName, typeAnn, defaultValue));
+            parameters.Add(new(paramName, typeAnn, defaultValue));
         } while (_stream.Match(TokenType.Comma));
 
-        _ = _stream.Consume(TokenType.RightParen);
+        _stream.Consume(TokenType.RightParen);
         return parameters;
     }
 
     private TypeNode ParseTypeAnnotation()
     {
-        Token nameToken = _stream.Match(TokenType.Identifier)
-            ? _stream.Previous
-            : _stream.Match(TokenType.KeywordVoid) || _stream.Match(TokenType.KeywordInt) ||
+        Token nameToken;
+
+        if (_stream.Match(TokenType.Identifier))
+        {
+            nameToken = _stream.Previous;
+        }
+        else
+        {
+            if (_stream.Match(TokenType.KeywordVoid) || _stream.Match(TokenType.KeywordInt) ||
                  _stream.Match(TokenType.KeywordString) || _stream.Match(TokenType.KeywordBool) ||
-                 _stream.Match(TokenType.KeywordFloat)
-                ? _stream.Previous
-                : _stream.Consume(TokenType.Identifier);
+                 _stream.Match(TokenType.KeywordFloat))
+            {
+                nameToken = _stream.Previous;
+            }
+            else
+            {
+                nameToken = _stream.Consume(TokenType.Identifier);
+            }
+        }
 
         if (!_stream.Match(TokenType.LessThan))
         {
@@ -179,14 +191,14 @@ public class StatementParser
         }
         while (_stream.Match(TokenType.Comma));
 
-        _ = _stream.Consume(TokenType.GreaterThan);
+        _stream.Consume(TokenType.GreaterThan);
         return TypeNode.Generic(nameToken, args);
     }
 
     private IfStatementNode ParseIfStatement()
     {
         ExpressionNode condition = _expressions.ParseExpression();
-        _ = _stream.Consume(TokenType.Colon);
+        _stream.Consume(TokenType.Colon);
         ExpectNewline();
 
         int thenIndent = _expectedIndent + _rules.TabWidth;
@@ -199,7 +211,7 @@ public class StatementParser
             return new(condition, thenBody, elseBody, thenIndent);
         }
 
-        _ = _stream.Consume(TokenType.Colon);
+        _stream.Consume(TokenType.Colon);
         ExpectNewline();
 
         _ = _expectedIndent + _rules.TabWidth;
@@ -212,7 +224,7 @@ public class StatementParser
     private WhileStatementNode ParseWhileStatement()
     {
         ExpressionNode condition = _expressions.ParseExpression();
-        _ = _stream.Consume(TokenType.Colon);
+        _stream.Consume(TokenType.Colon);
         ExpectNewline();
 
         int bodyIndent = _expectedIndent + _rules.TabWidth;
@@ -236,7 +248,7 @@ public class StatementParser
 
     private List<StatementNode> ParseIndentedBlock()
     {
-        _ = _stream.Consume(TokenType.Indent);
+        _stream.Consume(TokenType.Indent);
 
         List<StatementNode> statements = [];
 

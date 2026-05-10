@@ -5,7 +5,7 @@ using Snek.Pipeline;
 
 namespace Snek.Analysis;
 
-public class SnekSemanticAnalyzer : ISemanticAnalyzer
+public class SemanticAnalyzer : ISemanticAnalyzer
 {
     private readonly Dictionary<string, SymbolInfo> _globals = [];
     private readonly Stack<Scope> _scopes = new();
@@ -32,7 +32,7 @@ public class SnekSemanticAnalyzer : ISemanticAnalyzer
                 continue;
             }
 
-            _ = new FunctionType(
+            new FunctionType(
                 func.Name.Value,
                 func.Parameters,
                 func.ReturnType?.Name.Value ?? "void");
@@ -78,7 +78,7 @@ public class SnekSemanticAnalyzer : ISemanticAnalyzer
                     AnalyzeFunction(func);
                     break;
                 case ExpressionStatementNode expr:
-                    _ = AnalyzeExpression(expr.Expression);
+                    AnalyzeExpression(expr.Expression);
                     break;
                 case IfStatementNode ifs:
                     AnalyzeIf(ifs);
@@ -93,7 +93,7 @@ public class SnekSemanticAnalyzer : ISemanticAnalyzer
         }
         finally
         {
-            _ = _scopes.Pop();
+            _scopes.Pop();
         }
     }
 

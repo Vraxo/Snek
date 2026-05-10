@@ -6,7 +6,7 @@ using System.Text;
 
 namespace Snek.Generation;
 
-public class SnekCodeGenerator : ICodeGenerator
+public class CodeGenerator : ICodeGenerator
 {
     private readonly StringBuilder _output = new();
     private readonly Stack<string> _labelStack = new();
@@ -19,7 +19,7 @@ public class SnekCodeGenerator : ICodeGenerator
     public string? Generate(AstNode root, CompilationContext context)
     {
         _context = context;
-        _ = _output.Clear();
+        _output.Clear();
         _labelStack.Clear();
         _stringLiterals.Clear();
         _externalFunctions.Clear();
@@ -42,10 +42,12 @@ public class SnekCodeGenerator : ICodeGenerator
 
         foreach (StatementNode stmt in program.Statements)
         {
-            if (stmt is FunctionDefNode func)
+            if (stmt is not FunctionDefNode func)
             {
-                EmitFunction(func);
+                continue;
             }
+
+            EmitFunction(func);
         }
 
         return _output.ToString();
@@ -64,7 +66,7 @@ public class SnekCodeGenerator : ICodeGenerator
         {
             if (id.Name.Value is not "main" and not "print")
             {
-                _ = _externalFunctions.Add(id.Name.Value);
+                _externalFunctions.Add(id.Name.Value);
             }
         }
 
@@ -93,11 +95,11 @@ public class SnekCodeGenerator : ICodeGenerator
 
     private void EmitHeader()
     {
-        _ = _output.AppendLine("format PE console");
-        _ = _output.AppendLine("entry start");
-        _ = _output.AppendLine();
-        _ = _output.AppendLine("include 'win32a.inc'");
-        _ = _output.AppendLine();
+        _output.AppendLine("format PE console");
+        _output.AppendLine("entry start");
+        _output.AppendLine();
+        _output.AppendLine("include 'win32a.inc'");
+        _output.AppendLine();
     }
 
     private void EmitDataSection()
@@ -107,11 +109,11 @@ public class SnekCodeGenerator : ICodeGenerator
             return;
         }
 
-        _ = _output.AppendLine("section '.data' data readable writeable");
+        _output.AppendLine("section '.data' data readable writeable");
 
         foreach ((string? label, string? value) in _stringLiterals)
         {
-            _ = _output.Append($"    {label} db ");
+            _output.Append($"    {label} db ");
             List<string> parts = [];
 
             foreach (char c in value)
@@ -142,15 +144,15 @@ public class SnekCodeGenerator : ICodeGenerator
             }
 
             parts.Add("0");
-            _ = _output.AppendLine(string.Join(",", parts));
+            _output.AppendLine(string.Join(",", parts));
         }
-        _ = _output.AppendLine();
+        _output.AppendLine();
     }
 
     private void EmitImportSection()
     {
-        _ = _output.AppendLine("section '.idata' import data readable");
-        _ = _output.AppendLine();
+        _output.AppendLine("section '.idata' import data readable");
+        _output.AppendLine();
 
         Dictionary<string, HashSet<string>> libs = new()
         {
@@ -160,14 +162,14 @@ public class SnekCodeGenerator : ICodeGenerator
 
         foreach (string func in _externalFunctions)
         {
-            _ = libs["msvcrt.dll"].Add(func);
+            libs["msvcrt.dll"].Add(func);
         }
 
         IEnumerable<string> libDefs = libs.Keys
             .Select(lib => $"{lib.Split('.')[0]},'{lib}'");
 
-        _ = _output.AppendLine($"    library {string.Join(",", libDefs)}");
-        _ = _output.AppendLine();
+        _output.AppendLine($"    library {string.Join(",", libDefs)}");
+        _output.AppendLine();
 
         foreach ((string? libName, HashSet<string>? functions) in libs.OrderBy(k => k.Key))
         {
@@ -177,24 +179,25 @@ public class SnekCodeGenerator : ICodeGenerator
                 .OrderBy(f => f)
                 .Select(f => $"{f},'{f}'");
 
-            _ = _output.AppendLine($"    import {alias}, {string.Join(",", imports)}");
+            _output.AppendLine($"    import {alias}, {string.Join(",", imports)}");
         }
-        _ = _output.AppendLine();
+
+        _output.AppendLine();
     }
 
     private void EmitTextSectionHeader()
     {
-        _ = _output.AppendLine("section '.text' code readable executable");
-        _ = _output.AppendLine();
+        _output.AppendLine("section '.text' code readable executable");
+        _output.AppendLine();
     }
 
     private void EmitEntryPoint()
     {
-        _ = _output.AppendLine("start:");
-        _ = _output.AppendLine("    call _main");
-        _ = _output.AppendLine("    push eax");
-        _ = _output.AppendLine("    call [ExitProcess]");
-        _ = _output.AppendLine();
+        _output.AppendLine("start:");
+        _output.AppendLine("    call _main");
+        _output.AppendLine("    push eax");
+        _output.AppendLine("    call [ExitProcess]");
+        _output.AppendLine();
     }
 
     private void EmitFunction(FunctionDefNode func)
@@ -203,14 +206,15 @@ public class SnekCodeGenerator : ICodeGenerator
             ? "_main"
             : func.Name.Value;
 
-        _ = _output.AppendLine($"{mangledName}:");
-        _ = _output.AppendLine("    push ebp");
-        _ = _output.AppendLine("    mov ebp, esp");
+        _output.AppendLine($"{mangledName}:");
+        _output.AppendLine("    push ebp");
+        _output.AppendLine("    mov ebp, esp");
 
         int paramOffset = 8;
+
         foreach (ParameterNode param in func.Parameters)
         {
-            _ = _output.AppendLine($"    ; param {param.Name.Value} at [ebp+{paramOffset}]");
+            _output.AppendLine($"    ; param {param.Name.Value} at [ebp+{paramOffset}]");
             paramOffset += 4;
         }
 
@@ -221,12 +225,12 @@ public class SnekCodeGenerator : ICodeGenerator
 
         if (func.ReturnType?.Name.Value == "void")
         {
-            _ = _output.AppendLine("    xor eax, eax");
+            _output.AppendLine("    xor eax, eax");
         }
 
-        _ = _output.AppendLine("    leave");
-        _ = _output.AppendLine("    ret");
-        _ = _output.AppendLine();
+        _output.AppendLine("    leave");
+        _output.AppendLine("    ret");
+        _output.AppendLine();
     }
 
     private void EmitStatement(StatementNode stmt)
@@ -235,13 +239,13 @@ public class SnekCodeGenerator : ICodeGenerator
         {
             case ExpressionStatementNode expr:
                 EmitExpression(expr.Expression);
-                _ = _output.AppendLine("    pop eax");
+                _output.AppendLine("    pop eax");
                 break;
 
             case ReturnStatementNode ret:
                 if (ret.Value == null)
                 {
-                    _ = _output.AppendLine("    xor eax, eax");
+                    _output.AppendLine("    xor eax, eax");
                 }
                 else
                 {
@@ -265,17 +269,17 @@ public class SnekCodeGenerator : ICodeGenerator
         string endLabel = $"_endif_{_labelCounter}";
 
         EmitExpression(ifs.Condition);
-        _ = _output.AppendLine("    pop eax");
-        _ = _output.AppendLine("    test eax, eax");
-        _ = _output.AppendLine($"    jz {elseLabel}");
+        _output.AppendLine("    pop eax");
+        _output.AppendLine("    test eax, eax");
+        _output.AppendLine($"    jz {elseLabel}");
 
         foreach (StatementNode s in ifs.ThenBody)
         {
             EmitStatement(s);
         }
 
-        _ = _output.AppendLine($"    jmp {endLabel}");
-        _ = _output.AppendLine($"{elseLabel}:");
+        _output.AppendLine($"    jmp {endLabel}");
+        _output.AppendLine($"{elseLabel}:");
 
         if (ifs.ElseBody != null)
         {
@@ -285,7 +289,7 @@ public class SnekCodeGenerator : ICodeGenerator
             }
         }
 
-        _ = _output.AppendLine($"{endLabel}:");
+        _output.AppendLine($"{endLabel}:");
     }
 
     private void EmitWhile(WhileStatementNode whl)
@@ -293,19 +297,19 @@ public class SnekCodeGenerator : ICodeGenerator
         string startLabel = $"_while_{_labelCounter}";
         string endLabel = $"_endwhile_{_labelCounter++}";
 
-        _ = _output.AppendLine($"{startLabel}:");
+        _output.AppendLine($"{startLabel}:");
         EmitExpression(whl.Condition);
-        _ = _output.AppendLine("    pop eax");
-        _ = _output.AppendLine("    test eax, eax");
-        _ = _output.AppendLine($"    jz {endLabel}");
+        _output.AppendLine("    pop eax");
+        _output.AppendLine("    test eax, eax");
+        _output.AppendLine($"    jz {endLabel}");
 
         foreach (StatementNode s in whl.Body)
         {
             EmitStatement(s);
         }
 
-        _ = _output.AppendLine($"    jmp {startLabel}");
-        _ = _output.AppendLine($"{endLabel}:");
+        _output.AppendLine($"    jmp {startLabel}");
+        _output.AppendLine($"{endLabel}:");
     }
 
     private void EmitExpression(ExpressionNode expr)
@@ -317,8 +321,8 @@ public class SnekCodeGenerator : ICodeGenerator
                 break;
 
             case IdentifierExpressionNode id:
-                _ = _output.AppendLine($"    ; load {id.Name.Value}");
-                _ = _output.AppendLine("    push 0");
+                _output.AppendLine($"    ; load {id.Name.Value}");
+                _output.AppendLine("    push 0");
                 break;
 
             case CallExpressionNode call:
@@ -337,19 +341,19 @@ public class SnekCodeGenerator : ICodeGenerator
         {
             case TokenType.StringLiteral:
                 string label = _stringLiterals.First(kvp => kvp.Value == lit.Value.Value).Key;
-                _ = _output.AppendLine($"    push {label}");
+                _output.AppendLine($"    push {label}");
                 break;
 
             case TokenType.IntegerLiteral:
-                _ = _output.AppendLine($"    push {lit.Value.Value}");
+                _output.AppendLine($"    push {lit.Value.Value}");
                 break;
 
             case TokenType.KeywordTrue:
-                _ = _output.AppendLine("    push 1");
+                _output.AppendLine("    push 1");
                 break;
 
             case TokenType.KeywordFalse:
-                _ = _output.AppendLine("    push 0");
+                _output.AppendLine("    push 0");
                 break;
         }
     }
@@ -370,7 +374,7 @@ public class SnekCodeGenerator : ICodeGenerator
         if (callee == "print")
         {
             target = "[printf]";
-            _ = _externalFunctions.Add("printf");
+            _externalFunctions.Add("printf");
         }
         else
         {
@@ -379,14 +383,14 @@ public class SnekCodeGenerator : ICodeGenerator
                 : _externalFunctions.Contains(callee) ? $"[{callee}]" : callee;
         }
 
-        _ = _output.AppendLine($"    call {target}");
+        _output.AppendLine($"    call {target}");
 
         if (call.Arguments.Count > 0)
         {
-            _ = _output.AppendLine($"    add esp, {call.Arguments.Count * 4}");
+            _output.AppendLine($"    add esp, {call.Arguments.Count * 4}");
         }
 
-        _ = _output.AppendLine("    push eax");
+        _output.AppendLine("    push eax");
     }
 
     private void EmitBinary(BinaryExpressionNode bin)
@@ -394,34 +398,34 @@ public class SnekCodeGenerator : ICodeGenerator
         EmitExpression(bin.Right);
         EmitExpression(bin.Left);
 
-        _ = _output.AppendLine("    pop ebx");
-        _ = _output.AppendLine("    pop eax");
+        _output.AppendLine("    pop ebx");
+        _output.AppendLine("    pop eax");
 
         switch (bin.Operator.Type)
         {
             case TokenType.Plus:
-                _ = _output.AppendLine("    add eax, ebx");
+                _output.AppendLine("    add eax, ebx");
                 break;
 
             case TokenType.Minus:
-                _ = _output.AppendLine("    sub eax, ebx");
+                _output.AppendLine("    sub eax, ebx");
                 break;
 
             case TokenType.Star:
-                _ = _output.AppendLine("    imul eax, ebx");
+                _output.AppendLine("    imul eax, ebx");
                 break;
 
             case TokenType.DoubleEquals:
-                _ = _output.AppendLine("    cmp eax, ebx");
-                _ = _output.AppendLine("    sete al");
-                _ = _output.AppendLine("    movzx eax, al");
+                _output.AppendLine("    cmp eax, ebx");
+                _output.AppendLine("    sete al");
+                _output.AppendLine("    movzx eax, al");
                 break;
 
             default:
-                _ = _output.AppendLine("    ; unsupported binary op");
+                _output.AppendLine("    ; unsupported binary op");
                 break;
         }
 
-        _ = _output.AppendLine("    push eax");
+        _output.AppendLine("    push eax");
     }
 }

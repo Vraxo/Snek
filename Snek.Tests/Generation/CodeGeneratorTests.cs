@@ -1,30 +1,30 @@
 ﻿using Snek.Analysis;
+using Snek.Ast;
 using Snek.Generation;
 using Snek.Lexer;
-using Snek.Parser;
 using Snek.Pipeline;
 
 namespace Snek.Tests.Generation;
 
-public class SnekCodeGeneratorTests
+public sealed class CodeGeneratorTests
 {
-    private readonly SnekCodeGenerator _generator;
+    private readonly CodeGenerator _generator;
     private readonly CompilationContext _context;
 
-    public SnekCodeGeneratorTests()
+    public CodeGeneratorTests()
     {
-        _generator = new SnekCodeGenerator();
-        _context = new CompilationContext("test.snek", new PipelineOptions());
+        _generator = new();
+        _context = new("test.snek", new());
     }
 
     private string GenerateSource(string source)
     {
-        var lexer = new SnekLexer();
-        var parser = new SnekParser();
-        var analyzer = new SnekSemanticAnalyzer();
+        Snek.Lexer.Lexer lexer = new();
+        Snek.Parser.Parser parser = new();
+        SemanticAnalyzer analyzer = new();
 
-        var tokens = lexer.Tokenize(source, _context);
-        var ast = parser.Parse(tokens, _context);
+        IEnumerable<Token> tokens = lexer.Tokenize(source, _context);
+        AstNode ast = parser.Parse(tokens, _context);
         analyzer.Analyze(ast, _context);
 
         return _generator.Generate(ast, _context) ?? string.Empty;
@@ -33,8 +33,12 @@ public class SnekCodeGeneratorTests
     [Fact]
     public void Generate_EmptyProgram_ProducesValidHeader()
     {
-        var source = "fn main() -> void:\n  pass";
-        var output = GenerateSource(source);
+        string source = """
+            fn main() -> void:
+              pass
+            """;
+
+        string output = GenerateSource(source);
 
         Assert.Contains("format PE console", output);
         Assert.Contains("entry start", output);
@@ -44,8 +48,8 @@ public class SnekCodeGeneratorTests
     [Fact]
     public void Generate_StringLiteral_EmitsDataSection()
     {
-        var source = "print(\"hello\")";
-        var output = GenerateSource(source);
+        string source = "print(\"hello\")";
+        string output = GenerateSource(source);
 
         Assert.Contains("section '.data'", output);
         Assert.Contains("hello", output);
@@ -54,8 +58,11 @@ public class SnekCodeGeneratorTests
     [Fact]
     public void Generate_FunctionCall_EmitsCallInstruction()
     {
-        var source = "fn main() -> void:\n  print(\"test\")";
-        var output = GenerateSource(source);
+        string source = """
+            fn main() -> void:
+              print("test")
+            """;
+        string output = GenerateSource(source);
 
         Assert.Contains("call [printf]", output);
     }
@@ -63,8 +70,8 @@ public class SnekCodeGeneratorTests
     [Fact]
     public void Generate_IntegerLiteral_PushesValue()
     {
-        var source = "x = 42";
-        var output = GenerateSource(source);
+        string source = "x = 42";
+        string output = GenerateSource(source);
 
         Assert.Contains("push 42", output);
     }
@@ -72,8 +79,8 @@ public class SnekCodeGeneratorTests
     [Fact]
     public void Generate_BinaryAddition_EmitsAddInstruction()
     {
-        var source = "result = 1 + 2";
-        var output = GenerateSource(source);
+        string source = "result = 1 + 2";
+        string output = GenerateSource(source);
 
         Assert.Contains("add eax, ebx", output);
     }
@@ -81,8 +88,12 @@ public class SnekCodeGeneratorTests
     [Fact]
     public void Generate_IfStatement_EmitsConditionalJump()
     {
-        var source = "if true:\n  x = 1";
-        var output = GenerateSource(source);
+        string source = """
+            if true:
+              x = 1
+            """;
+
+        string output = GenerateSource(source);
 
         Assert.Contains("jz", output);
         Assert.Contains("_else_", output);
@@ -92,8 +103,12 @@ public class SnekCodeGeneratorTests
     [Fact]
     public void Generate_WhileLoop_EmitsLoopStructure()
     {
-        var source = "while x < 10:\n  x = x + 1";
-        var output = GenerateSource(source);
+        string source = """
+            while x < 10:
+              x = x + 1
+            """;
+
+        string output = GenerateSource(source);
 
         Assert.Contains("_while_", output);
         Assert.Contains("_endwhile_", output);
@@ -103,8 +118,12 @@ public class SnekCodeGeneratorTests
     [Fact]
     public void Generate_ReturnStatement_EmitsReturnSequence()
     {
-        var source = "fn foo() -> int:\n  return 42";
-        var output = GenerateSource(source);
+        string source = """
+            fn foo() -> int:
+              return 42
+            """;
+
+        string output = GenerateSource(source);
 
         Assert.Contains("leave", output);
         Assert.Contains("ret", output);
@@ -113,8 +132,12 @@ public class SnekCodeGeneratorTests
     [Fact]
     public void Generate_ExternalFunction_DeclaredInImportSection()
     {
-        var source = "fn main() -> void:\n  customFunc()";
-        var output = GenerateSource(source);
+        string source = """
+            fn main() -> void:
+              customFunc()
+            """;
+
+        string output = GenerateSource(source);
 
         Assert.Contains("section '.idata'", output);
         Assert.Contains("customFunc", output);

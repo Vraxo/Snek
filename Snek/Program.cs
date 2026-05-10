@@ -3,7 +3,6 @@ using Snek.Compiler;
 using Snek.Diagnoistics;
 using Snek.Generation;
 using Snek.Lexer;
-using Snek.Parser;
 using Snek.Pipeline;
 
 namespace Snek;
@@ -37,10 +36,10 @@ public class Program
         PipelineOptions pipelineOptions = new() { EnableLogging = options.Verbose };
 
         LexerRules lexerRules = GetLexerRules(options.Syntax);
-        SnekLexer lexer = new(lexerRules);
-        SnekParser parser = new(lexerRules);
-        SnekSemanticAnalyzer analyzer = new();
-        SnekCodeGenerator generator = new();
+        Lexer.Lexer lexer = new(lexerRules);
+        Parser.Parser parser = new(lexerRules);
+        SemanticAnalyzer analyzer = new();
+        CodeGenerator generator = new();
 
         CompilerPipeline pipeline = new(lexer, parser, analyzer, generator, pipelineOptions);
         CompilationResult result = pipeline.Compile(source, inputPath);
@@ -69,7 +68,7 @@ public class Program
         }
 
         string asmDirectory = Path.GetDirectoryName(Path.GetFullPath(asmOutputPath)) ?? ".";
-        _ = new Assembler();
+        new Assembler();
 
         if (Assembler.Assemble(asmOutputPath, asmDirectory))
         {
@@ -120,7 +119,6 @@ public class Program
     {
         return syntax?.ToLowerInvariant() switch
         {
-            "cstyle" => LexerRules.CreateCStyle(),
             "python" => LexerRules.CreatePythonStyle(),
             _ => new()
         };

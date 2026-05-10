@@ -1,8 +1,5 @@
 ﻿namespace Snek.Diagnoistics;
 
-/// <summary>
-/// Represents a compiler diagnostic (error or warning) with source location.
-/// </summary>
 public record Diagnostic(
     string SourceName,
     string Message,
