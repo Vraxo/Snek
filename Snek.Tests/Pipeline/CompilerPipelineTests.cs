@@ -13,7 +13,11 @@ public class CompilerPipelineTests
     public void Compile_ValidProgram_ReturnsSuccess()
     {
         var pipeline = CreateDefaultPipeline();
-        var source = "fn main() -> void:\n  pass\n";
+        var source = """
+            fn main() -> void:
+              pass
+
+            """;
 
         var result = pipeline.Compile(source, "test.snek");
 
@@ -53,6 +57,7 @@ public class CompilerPipelineTests
         var source = """
             fn foo() -> int:
               return "wrong"
+
             """;
 
         var result = pipeline.Compile(source, "test.snek");
@@ -66,17 +71,12 @@ public class CompilerPipelineTests
     {
         var options = new PipelineOptions { EnableLogging = true };
         var pipeline = CreateDefaultPipeline(options);
-        // Added an extra blank line after 'pass' to ensure a newline token before dedent.
-        var source = """
-            fn main() -> void:
-              pass
-
-            """;
+        var source = "fn main() -> void: pass";
 
         var result = pipeline.Compile(source, "test.snek");
 
         result.Success.Should().BeTrue();
-        result.Output.Should().NotBeNull(); // Ensure compilation succeeds even with verbose logging
+        result.Output.Should().NotBeNull();
     }
 
     [Fact]
@@ -86,6 +86,7 @@ public class CompilerPipelineTests
         var source = """
             fn main() -> void:
               print("hello")
+
             """;
 
         var result = pipeline.Compile(source, "test.snek");
