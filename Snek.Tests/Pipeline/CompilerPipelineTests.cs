@@ -13,10 +13,7 @@ public class CompilerPipelineTests
     public void Compile_ValidProgram_ReturnsSuccess()
     {
         var pipeline = CreateDefaultPipeline();
-        var source = """
-            fn main() -> void:
-              pass
-            """;
+        var source = "fn main() -> void:\n  pass\n";
 
         var result = pipeline.Compile(source, "test.snek");
 
