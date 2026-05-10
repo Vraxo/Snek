@@ -1,4 +1,5 @@
-﻿using Snek.Analysis;
+using FluentAssertions;
+using Snek.Analysis;
 using Snek.Ast;
 using Snek.Lexer;
 using Snek.Parser;
@@ -32,7 +33,7 @@ public class SemanticAnalyzerTests
         var source = "x = undefinedVar";
         AnalyzeSource(source);
 
-        Assert.Contains(_context.Diagnostics, d => d.IsError && d.Message.Contains("Undefined identifier"));
+        _context.Diagnostics.Should().Contain(d => d.IsError && d.Message.Contains("Undefined identifier"));
     }
 
     [Fact]
@@ -41,7 +42,7 @@ public class SemanticAnalyzerTests
         var source = "fn foo() -> int:\n  return \"string\"";
         AnalyzeSource(source);
 
-        Assert.Contains(_context.Diagnostics, d => d.IsError && d.Message.Contains("Return type mismatch"));
+        _context.Diagnostics.Should().Contain(d => d.IsError && d.Message.Contains("Return type mismatch"));
     }
 
     [Fact]
@@ -50,7 +51,7 @@ public class SemanticAnalyzerTests
         var source = "fn foo() -> int:\n  pass";
         AnalyzeSource(source);
 
-        Assert.Contains(_context.Diagnostics, d => d.IsError && d.Message.Contains("must return a value"));
+        _context.Diagnostics.Should().Contain(d => d.IsError && d.Message.Contains("must return a value"));
     }
 
     [Fact]
@@ -59,7 +60,7 @@ public class SemanticAnalyzerTests
         var source = "if \"string\":\n  pass";
         AnalyzeSource(source);
 
-        Assert.Contains(_context.Diagnostics, d => d.IsError && d.Message.Contains("Condition must be bool"));
+        _context.Diagnostics.Should().Contain(d => d.IsError && d.Message.Contains("Condition must be bool"));
     }
 
     [Fact]
@@ -68,7 +69,7 @@ public class SemanticAnalyzerTests
         var source = "while 42:\n  pass";
         AnalyzeSource(source);
 
-        Assert.Contains(_context.Diagnostics, d => d.IsError && d.Message.Contains("While condition must be bool"));
+        _context.Diagnostics.Should().Contain(d => d.IsError && d.Message.Contains("While condition must be bool"));
     }
 
     [Fact]
@@ -77,7 +78,7 @@ public class SemanticAnalyzerTests
         var source = "fn foo(x: int) -> void:\n  pass\n\nfoo()";
         AnalyzeSource(source);
 
-        Assert.Contains(_context.Diagnostics, d => d.IsError && d.Message.Contains("expects 1 args, got 0"));
+        _context.Diagnostics.Should().Contain(d => d.IsError && d.Message.Contains("expects 1 args, got 0"));
     }
 
     [Fact]
@@ -89,7 +90,7 @@ public class SemanticAnalyzerTests
         var type = _analyzer.ResolveType(
             new IdentifierExpressionNode(new Token(TokenType.Identifier, "x", 1, 1)),
             _context);
-        Assert.DoesNotContain(_context.Diagnostics, d => d.IsError);
+        _context.Diagnostics.Should().NotContain(d => d.IsError);
     }
 
     [Fact]
@@ -98,7 +99,7 @@ public class SemanticAnalyzerTests
         var source = "x = 1 + 2.5";
         AnalyzeSource(source);
 
-        Assert.DoesNotContain(_context.Diagnostics, d => d.IsError);
+        _context.Diagnostics.Should().NotContain(d => d.IsError);
     }
 
     [Fact]
@@ -107,6 +108,6 @@ public class SemanticAnalyzerTests
         var source = "result = 5 > 3";
         AnalyzeSource(source);
 
-        Assert.DoesNotContain(_context.Diagnostics, d => d.IsError);
+        _context.Diagnostics.Should().NotContain(d => d.IsError);
     }
 }

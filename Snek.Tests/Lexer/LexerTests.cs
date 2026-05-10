@@ -1,4 +1,5 @@
-﻿using Snek.Lexer;
+using FluentAssertions;
+using Snek.Lexer;
 using Snek.Pipeline;
 
 namespace Snek.Tests.Lexer;
@@ -19,8 +20,8 @@ public class LexerTests
     {
         List<Token> tokens = _lexer.Tokenize("myVar", _context).ToList();
 
-        Assert.Single(tokens, t => t.Type == TokenType.Identifier);
-        Assert.Equal("myVar", tokens.First(t => t.Type == TokenType.Identifier).Value);
+        tokens.Should().ContainSingle(t => t.Type == TokenType.Identifier);
+        tokens.First(t => t.Type == TokenType.Identifier).Value.Should().Be("myVar");
     }
 
     [Fact]
@@ -29,7 +30,7 @@ public class LexerTests
         List<Token> tokens = _lexer.Tokenize("42", _context).ToList();
 
         Token token = tokens.First(t => t.Type == TokenType.IntegerLiteral);
-        Assert.Equal("42", token.Value);
+        token.Value.Should().Be("42");
     }
 
     [Fact]
@@ -38,7 +39,7 @@ public class LexerTests
         List<Token> tokens = _lexer.Tokenize("3.14", _context).ToList();
 
         Token token = tokens.First(t => t.Type == TokenType.FloatLiteral);
-        Assert.Equal("3.14", token.Value);
+        token.Value.Should().Be("3.14");
     }
 
     [Fact]
@@ -47,7 +48,7 @@ public class LexerTests
         List<Token> tokens = _lexer.Tokenize("\"hello\"", _context).ToList();
 
         Token token = tokens.First(t => t.Type == TokenType.StringLiteral);
-        Assert.Equal("hello", token.Value);
+        token.Value.Should().Be("hello");
     }
 
     [Fact]
@@ -55,7 +56,7 @@ public class LexerTests
     {
         List<Token> tokens = _lexer.Tokenize("fn", _context).ToList();
 
-        Assert.Contains(tokens, t => t.Type == TokenType.KeywordFn);
+        tokens.Should().Contain(t => t.Type == TokenType.KeywordFn);
     }
 
     [Fact]
@@ -63,7 +64,7 @@ public class LexerTests
     {
         List<Token> tokens = _lexer.Tokenize("==", _context).ToList();
 
-        Assert.Contains(tokens, t => t.Type == TokenType.DoubleEquals);
+        tokens.Should().Contain(t => t.Type == TokenType.DoubleEquals);
     }
 
     [Fact]
@@ -72,9 +73,8 @@ public class LexerTests
         List<Token> tokens = _lexer.Tokenize("x # this is a comment\ny", _context).ToList();
 
         List<string> identifiers = tokens.Where(t => t.Type == TokenType.Identifier).Select(t => t.Value).ToList();
-        Assert.Contains("x", identifiers);
-        Assert.Contains("y", identifiers);
-        Assert.DoesNotContain("this is a comment", tokens.Select(t => t.Value));
+        identifiers.Should().Contain("x").And.Contain("y");
+        tokens.Select(t => t.Value).Should().NotContain("this is a comment");
     }
 
     [Fact]
@@ -83,8 +83,8 @@ public class LexerTests
         string source = "fn main():\n  x = 1";
         List<Token> tokens = _lexer.Tokenize(source, _context).ToList();
 
-        Assert.Contains(tokens, t => t.Type == TokenType.Indent);
-        Assert.Contains(tokens, t => t.Type == TokenType.Dedent);
+        tokens.Should().Contain(t => t.Type == TokenType.Indent);
+        tokens.Should().Contain(t => t.Type == TokenType.Dedent);
     }
 
     [Fact]
@@ -92,7 +92,7 @@ public class LexerTests
     {
         List<Token> tokens = _lexer.Tokenize("\"unterminated", _context).ToList();
 
-        Assert.Contains(_context.Diagnostics, d => d.IsError && d.Message.Contains("Unterminated"));
+        _context.Diagnostics.Should().Contain(d => d.IsError && d.Message.Contains("Unterminated"));
     }
 
     [Fact]
@@ -100,6 +100,6 @@ public class LexerTests
     {
         List<Token> tokens = _lexer.Tokenize("", _context).ToList();
 
-        Assert.Contains(tokens, t => t.Type == TokenType.Eof);
+        tokens.Should().Contain(t => t.Type == TokenType.Eof);
     }
 }

@@ -1,4 +1,5 @@
-﻿using Snek.Analysis;
+using FluentAssertions;
+using Snek.Analysis;
 using Snek.Ast;
 using Snek.Generation;
 using Snek.Lexer;
@@ -40,9 +41,9 @@ public sealed class CodeGeneratorTests
 
         string output = GenerateSource(source);
 
-        Assert.Contains("format PE console", output);
-        Assert.Contains("entry start", output);
-        Assert.Contains("section '.text' code readable executable", output);
+        output.Should().Contain("format PE console");
+        output.Should().Contain("entry start");
+        output.Should().Contain("section '.text' code readable executable");
     }
 
     [Fact]
@@ -51,8 +52,8 @@ public sealed class CodeGeneratorTests
         string source = "print(\"hello\")";
         string output = GenerateSource(source);
 
-        Assert.Contains("section '.data'", output);
-        Assert.Contains("hello", output);
+        output.Should().Contain("section '.data'");
+        output.Should().Contain("hello");
     }
 
     [Fact]
@@ -64,7 +65,7 @@ public sealed class CodeGeneratorTests
             """;
         string output = GenerateSource(source);
 
-        Assert.Contains("call [printf]", output);
+        output.Should().Contain("call [printf]");
     }
 
     [Fact]
@@ -73,7 +74,7 @@ public sealed class CodeGeneratorTests
         string source = "x = 42";
         string output = GenerateSource(source);
 
-        Assert.Contains("push 42", output);
+        output.Should().Contain("push 42");
     }
 
     [Fact]
@@ -82,7 +83,7 @@ public sealed class CodeGeneratorTests
         string source = "result = 1 + 2";
         string output = GenerateSource(source);
 
-        Assert.Contains("add eax, ebx", output);
+        output.Should().Contain("add eax, ebx");
     }
 
     [Fact]
@@ -95,9 +96,9 @@ public sealed class CodeGeneratorTests
 
         string output = GenerateSource(source);
 
-        Assert.Contains("jz", output);
-        Assert.Contains("_else_", output);
-        Assert.Contains("_endif_", output);
+        output.Should().Contain("jz");
+        output.Should().Contain("_else_");
+        output.Should().Contain("_endif_");
     }
 
     [Fact]
@@ -110,9 +111,9 @@ public sealed class CodeGeneratorTests
 
         string output = GenerateSource(source);
 
-        Assert.Contains("_while_", output);
-        Assert.Contains("_endwhile_", output);
-        Assert.Contains("jmp", output);
+        output.Should().Contain("_while_");
+        output.Should().Contain("_endwhile_");
+        output.Should().Contain("jmp");
     }
 
     [Fact]
@@ -125,8 +126,8 @@ public sealed class CodeGeneratorTests
 
         string output = GenerateSource(source);
 
-        Assert.Contains("leave", output);
-        Assert.Contains("ret", output);
+        output.Should().Contain("leave");
+        output.Should().Contain("ret");
     }
 
     [Fact]
@@ -139,7 +140,7 @@ public sealed class CodeGeneratorTests
 
         string output = GenerateSource(source);
 
-        Assert.Contains("section '.idata'", output);
-        Assert.Contains("customFunc", output);
+        output.Should().Contain("section '.idata'");
+        output.Should().Contain("customFunc");
     }
 }

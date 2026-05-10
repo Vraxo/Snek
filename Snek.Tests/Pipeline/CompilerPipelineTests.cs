@@ -1,3 +1,4 @@
+using FluentAssertions;
 using Snek.Analysis;
 using Snek.Generation;
 using Snek.Lexer;
@@ -19,9 +20,9 @@ public class CompilerPipelineTests
 
         var result = pipeline.Compile(source, "test.snek");
 
-        Assert.True(result.Success);
-        Assert.NotNull(result.Output);
-        Assert.DoesNotContain(result.Diagnostics, d => d.IsError);
+        result.Success.Should().BeTrue();
+        result.Output.Should().NotBeNull();
+        result.Diagnostics.Should().NotContain(d => d.IsError);
     }
 
     [Fact]
@@ -32,8 +33,8 @@ public class CompilerPipelineTests
 
         var result = pipeline.Compile(source, "test.snek");
 
-        Assert.False(result.Success);
-        Assert.Contains(result.Diagnostics, d => d.IsError && d.Message.Contains("Unterminated"));
+        result.Success.Should().BeFalse();
+        result.Diagnostics.Should().Contain(d => d.IsError && d.Message.Contains("Unterminated"));
     }
 
     [Fact]
@@ -44,8 +45,8 @@ public class CompilerPipelineTests
 
         var result = pipeline.Compile(source, "test.snek");
 
-        Assert.False(result.Success);
-        Assert.Contains(result.Diagnostics, d => d.IsError);
+        result.Success.Should().BeFalse();
+        result.Diagnostics.Should().Contain(d => d.IsError);
     }
 
     [Fact]
@@ -59,8 +60,8 @@ public class CompilerPipelineTests
 
         var result = pipeline.Compile(source, "test.snek");
 
-        Assert.False(result.Success);
-        Assert.Contains(result.Diagnostics, d => d.Message.Contains("Return type mismatch"));
+        result.Success.Should().BeFalse();
+        result.Diagnostics.Should().Contain(d => d.Message.Contains("Return type mismatch"));
     }
 
     [Fact]
@@ -81,8 +82,8 @@ public class CompilerPipelineTests
             throw new Exception($"Compilation failed with diagnostics:\n{diagnostics}");
         }
 
-        Assert.True(result.Success);
-        Assert.NotNull(result.Output); // Ensure compilation succeeds even with verbose logging
+        result.Success.Should().BeTrue();
+        result.Output.Should().NotBeNull(); // Ensure compilation succeeds even with verbose logging
     }
 
     [Fact]
@@ -96,10 +97,10 @@ public class CompilerPipelineTests
 
         var result = pipeline.Compile(source, "test.snek");
 
-        Assert.True(result.Success);
-        Assert.Contains("section '.data'", result.Output);
-        Assert.Contains("section '.text'", result.Output);
-        Assert.Contains("section '.idata'", result.Output);
+        result.Success.Should().BeTrue();
+        result.Output.Should().Contain("section '.data'");
+        result.Output.Should().Contain("section '.text'");
+        result.Output.Should().Contain("section '.idata'");
     }
 
     private CompilerPipeline CreateDefaultPipeline(PipelineOptions? options = null)

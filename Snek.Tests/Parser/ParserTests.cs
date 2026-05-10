@@ -1,4 +1,5 @@
-﻿using Snek.Ast;
+using FluentAssertions;
+using Snek.Ast;
 using Snek.Lexer;
 using Snek.Pipeline;
 
@@ -32,10 +33,11 @@ public class ParserTests
 
         AstNode ast = ParseSource(source);
 
-        ProgramNode program = Assert.IsType<ProgramNode>(ast);
-        FunctionDefNode func = Assert.Single(program.Statements.OfType<FunctionDefNode>());
-        Assert.Equal("main", func.Name.Value);
-        Assert.Equal("void", func.ReturnType?.Name.Value);
+        ast.Should().BeOfType<ProgramNode>();
+        var program = (ProgramNode)ast;
+        var func = program.Statements.OfType<FunctionDefNode>().Should().ContainSingle().Subject;
+        func.Name.Value.Should().Be("main");
+        func.ReturnType?.Name.Value.Should().Be("void");
     }
 
     [Fact]
@@ -48,9 +50,10 @@ public class ParserTests
 
         AstNode ast = ParseSource(source);
 
-        ProgramNode program = Assert.IsType<ProgramNode>(ast);
-        IfStatementNode ifStmt = Assert.Single(program.Statements.OfType<IfStatementNode>());
-        Assert.IsType<LiteralExpressionNode>(ifStmt.Condition);
+        ast.Should().BeOfType<ProgramNode>();
+        var program = (ProgramNode)ast;
+        var ifStmt = program.Statements.OfType<IfStatementNode>().Should().ContainSingle().Subject;
+        ifStmt.Condition.Should().BeOfType<LiteralExpressionNode>();
     }
 
     [Fact]
@@ -63,9 +66,10 @@ public class ParserTests
 
         AstNode ast = ParseSource(source);
 
-        ProgramNode program = Assert.IsType<ProgramNode>(ast);
-        WhileStatementNode whileStmt = Assert.Single(program.Statements.OfType<WhileStatementNode>());
-        Assert.IsType<BinaryExpressionNode>(whileStmt.Condition);
+        ast.Should().BeOfType<ProgramNode>();
+        var program = (ProgramNode)ast;
+        var whileStmt = program.Statements.OfType<WhileStatementNode>().Should().ContainSingle().Subject;
+        whileStmt.Condition.Should().BeOfType<BinaryExpressionNode>();
     }
 
     [Fact]
@@ -78,10 +82,11 @@ public class ParserTests
 
         AstNode ast = ParseSource(source);
 
-        ProgramNode program = Assert.IsType<ProgramNode>(ast);
-        FunctionDefNode func = Assert.Single(program.Statements.OfType<FunctionDefNode>());
-        ReturnStatementNode returnStmt = Assert.Single(func.Body.OfType<ReturnStatementNode>());
-        Assert.IsType<LiteralExpressionNode>(returnStmt.Value);
+        ast.Should().BeOfType<ProgramNode>();
+        var program = (ProgramNode)ast;
+        var func = program.Statements.OfType<FunctionDefNode>().Should().ContainSingle().Subject;
+        var returnStmt = func.Body.OfType<ReturnStatementNode>().Should().ContainSingle().Subject;
+        returnStmt.Value.Should().BeOfType<LiteralExpressionNode>();
     }
 
     [Fact]
@@ -90,10 +95,11 @@ public class ParserTests
         string source = "print(\"hello\")";
         AstNode ast = ParseSource(source);
 
-        ProgramNode program = Assert.IsType<ProgramNode>(ast);
-        ExpressionStatementNode exprStmt = Assert.Single(program.Statements.OfType<ExpressionStatementNode>());
-        CallExpressionNode call = Assert.IsType<CallExpressionNode>(exprStmt.Expression);
-        Assert.Equal("print", ((IdentifierExpressionNode)call.Callee).Name.Value);
+        ast.Should().BeOfType<ProgramNode>();
+        var program = (ProgramNode)ast;
+        var exprStmt = program.Statements.OfType<ExpressionStatementNode>().Should().ContainSingle().Subject;
+        var call = exprStmt.Expression.Should().BeOfType<CallExpressionNode>().Subject;
+        ((IdentifierExpressionNode)call.Callee).Name.Value.Should().Be("print");
     }
 
     [Fact]
@@ -102,10 +108,11 @@ public class ParserTests
         string source = "x + y";
         AstNode ast = ParseSource(source);
 
-        ProgramNode program = Assert.IsType<ProgramNode>(ast);
-        ExpressionStatementNode exprStmt = Assert.Single(program.Statements.OfType<ExpressionStatementNode>());
-        BinaryExpressionNode binary = Assert.IsType<BinaryExpressionNode>(exprStmt.Expression);
-        Assert.Equal(TokenType.Plus, binary.Operator.Type);
+        ast.Should().BeOfType<ProgramNode>();
+        var program = (ProgramNode)ast;
+        var exprStmt = program.Statements.OfType<ExpressionStatementNode>().Should().ContainSingle().Subject;
+        var binary = exprStmt.Expression.Should().BeOfType<BinaryExpressionNode>().Subject;
+        binary.Operator.Type.Should().Be(TokenType.Plus);
     }
 
     [Fact]
@@ -114,7 +121,7 @@ public class ParserTests
         string source = "fn invalid(:";
         AstNode ast = ParseSource(source);
 
-        Assert.Contains(_context.Diagnostics, d => d.IsError);
+        _context.Diagnostics.Should().Contain(d => d.IsError);
     }
 
     [Fact]
@@ -123,10 +130,11 @@ public class ParserTests
         string source = "fn foo(x: int) -> void:\n  pass";
         AstNode ast = ParseSource(source);
 
-        ProgramNode program = Assert.IsType<ProgramNode>(ast);
-        FunctionDefNode func = Assert.Single(program.Statements.OfType<FunctionDefNode>());
-        ParameterNode param = Assert.Single(func.Parameters);
-        Assert.Equal("x", param.Name.Value);
-        Assert.Equal("int", param.TypeAnnotation?.Name.Value);
+        ast.Should().BeOfType<ProgramNode>();
+        var program = (ProgramNode)ast;
+        var func = program.Statements.OfType<FunctionDefNode>().Should().ContainSingle().Subject;
+        var param = func.Parameters.Should().ContainSingle().Subject;
+        param.Name.Value.Should().Be("x");
+        param.TypeAnnotation?.Name.Value.Should().Be("int");
     }
 }
