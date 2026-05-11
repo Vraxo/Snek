@@ -62,7 +62,8 @@ public class SemanticAnalyzerTests
             """;
         AnalyzeSource(source);
 
-        _context.Diagnostics.Should().Contain(d => d.IsError && d.Message.Contains("must return a value"));
+        _context.Diagnostics.Should().ContainSingle(d => 
+            d.IsError && d.Message.Contains("must return a value"));
     }
 
     [Fact]

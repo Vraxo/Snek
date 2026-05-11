@@ -112,9 +112,28 @@ public class SemanticAnalyzer : ISemanticAnalyzer
 
         // Analyze body
         string returnType = func.ReturnType?.Name.Value ?? "void";
+        bool hasReturn = false;
+        
         foreach (StatementNode bodyStmt in func.Body)
         {
             AnalyzeStatement(bodyStmt, returnType);
+            
+            // Check if this statement is a return
+            if (bodyStmt is ReturnStatementNode)
+            {
+                hasReturn = true;
+            }
+        }
+        
+        // If function is non-void and has no return statement, report error
+        if (returnType != "void" && !hasReturn && returnType != "Any")
+        {
+            _context.Diagnostics.Add(new Diagnostic(
+                _context.SourceName,
+                $"Non-void function '{func.Name.Value}' must return a value",
+                func.Name.Line,
+                func.Name.Column,
+                DiagnosticSeverity.Error));
         }
     }
 
