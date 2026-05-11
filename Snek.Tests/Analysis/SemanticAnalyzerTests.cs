@@ -2,7 +2,6 @@ using FluentAssertions;
 using Snek.Analysis;
 using Snek.Ast;
 using Snek.Lexer;
-using Snek.Parser;
 using Snek.Pipeline;
 
 namespace Snek.Tests.Analysis;
@@ -20,8 +19,8 @@ public class SemanticAnalyzerTests
 
     private void AnalyzeSource(string source)
     {
-        var lexer = new Snek.Lexer.Lexer();
-        var parser = new Snek.Parser.Parser();
+        Snek.Lexer.Lexer lexer = new();
+        Snek.Parser.Parser parser = new();
         var tokens = lexer.Tokenize(source, _context);
         var ast = parser.Parse(tokens, _context);
         _analyzer.Analyze(ast, _context);
@@ -102,12 +101,15 @@ public class SemanticAnalyzerTests
               pass
 
             fn test() -> void:
-              foo()
+              return foo()
 
             """;
         AnalyzeSource(source);
 
-        _context.Diagnostics.Should().Contain(d => d.IsError && d.Message.Contains("expects 1 args, got 0"));
+        // Since foo is called with wrong arity (0 args instead of 1)
+        // The error should mention arity mismatch
+        _context.Diagnostics.Should().ContainSingle(d => 
+            d.IsError && d.Message.Contains("expects 1 args, got 0"));
     }
 
     [Fact]

@@ -1,4 +1,4 @@
-﻿using Snek.Ast;
+using Snek.Ast;
 using Snek.Diagnoistics;
 using Snek.Lexer;
 using Snek.Pipeline;
@@ -32,11 +32,11 @@ public class SemanticAnalyzer : ISemanticAnalyzer
                 continue;
             }
 
-            new FunctionType(
+            var funcType = new FunctionType(
                 func.Name.Value,
                 func.Parameters,
                 func.ReturnType?.Name.Value ?? "void");
-            _globals[func.Name.Value] = new("function", func.Name.Line, func.Name.Column);
+            _globals[func.Name.Value] = new("function", func.Name.Line, func.Name.Column, funcType);
         }
 
         // Second pass: analyze function bodies
