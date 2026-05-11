@@ -120,7 +120,7 @@ public class SemanticAnalyzerTests
             fn foo() -> int:
               return 42
 
-            fn test() -> void:
+            fn test() -> int:
               return foo()
 
             """;
