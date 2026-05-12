@@ -1,4 +1,4 @@
-﻿using Snek.Diagnoistics;
+using Snek.Diagnoistics;
 using Snek.Lexer;
 using Snek.Pipeline;
 
@@ -52,7 +52,7 @@ public class ParserStream
             return token;
         }
 
-        ReportError($"Expected '{type}' but got '{Current.Type}'", Current);
+        ReportError($"Expected '{type}' but got '{Current.Value}'", Current);
         return Current;
     }
 

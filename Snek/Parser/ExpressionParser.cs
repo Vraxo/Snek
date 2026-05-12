@@ -1,4 +1,4 @@
-﻿using Snek.Ast;
+using Snek.Ast;
 using Snek.Lexer;
 
 namespace Snek.Parser;
@@ -99,7 +99,7 @@ public class ExpressionParser
         }
 
         _stream.ReportError(
-            $"Unexpected token in expression: '{_stream.Current.Type}'",
+            $"Unexpected token '{_stream.Current.Value}' in expression",
             _stream.Current);
 
         _stream.Advance();

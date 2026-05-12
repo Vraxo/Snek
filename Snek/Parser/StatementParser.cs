@@ -251,7 +251,7 @@ public class StatementParser
         if (!_stream.Match(TokenType.Indent))
         {
             _stream.ReportError(
-                $"Expected 'Indent' but got '{_stream.Current.Type}'",
+                $"Expected indented block but got '{_stream.Current.Value}'",
                 _stream.Current);
 
             SyncToBlockEnd();
@@ -304,7 +304,7 @@ public class StatementParser
         }
 
         _stream.ReportError(
-            $"Expected newline after statement, got '{_stream.Current.Type}'",
+            $"Expected newline after ':' but got '{_stream.Current.Value}'",
             _stream.Current);
 
         // Skip to next line to prevent cascading errors
