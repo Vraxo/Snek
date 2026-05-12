@@ -1,4 +1,4 @@
-﻿using Snek.Analysis;
+using Snek.Analysis;
 using Snek.Ast;
 using Snek.Diagnoistics;
 using Snek.Generation;
@@ -43,11 +43,8 @@ public class CompilerPipeline
 
             IEnumerable<Token> tokens = _lexer.Tokenize(source, context);
 
-            if (context.Diagnostics.Any(d => d.IsError))
-            {
-                return new CompilationResult(context.Diagnostics);
-            }
-
+            // Continue to parsing even with lexer errors — the parser
+            // can often report better, more context-aware diagnostics.
             // Stage 2: Parsing
             if (_options.EnableLogging)
             {

@@ -63,6 +63,7 @@ public class ParserStream
             message,
             atToken.Line,
             atToken.Column,
-            DiagnosticSeverity.Error));
+            DiagnosticSeverity.Error,
+            atToken.Value.Length));
     }
 }

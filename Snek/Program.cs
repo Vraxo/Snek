@@ -52,7 +52,9 @@ public class Program
                 [inputPath] = sourceLines
             };
 
-            DiagnosticPrinter printer = new(result.Diagnostics, sourceFiles);
+            IReadOnlyList<Diagnostic> deduped = DeduplicateDiagnostics(result.Diagnostics);
+
+            DiagnosticPrinter printer = new(deduped, sourceFiles);
             printer.Print();
 
             return;
@@ -83,6 +85,25 @@ public class Program
             Console.Error.WriteLine("Assembly failed. Check FASM output above.");
             return;
         }
+    }
+
+    private static IReadOnlyList<Diagnostic> DeduplicateDiagnostics(IReadOnlyList<Diagnostic> diagnostics)
+    {
+        List<Diagnostic> deduped = [];
+        HashSet<(string, int)> seenLines = [];
+
+        foreach (Diagnostic diag in diagnostics
+            .OrderBy(d => d.SourceName)
+            .ThenBy(d => d.Line)
+            .ThenBy(d => d.Column))
+        {
+            if (seenLines.Add((diag.SourceName, diag.Line)))
+            {
+                deduped.Add(diag);
+            }
+        }
+
+        return deduped;
     }
 
     private static CompilerOptions ParseOptions(string[] args)

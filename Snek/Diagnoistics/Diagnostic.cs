@@ -1,11 +1,12 @@
-﻿namespace Snek.Diagnoistics;
+namespace Snek.Diagnoistics;
 
 public record Diagnostic(
     string SourceName,
     string Message,
     int Line,
     int Column,
-    DiagnosticSeverity Severity = DiagnosticSeverity.Error)
+    DiagnosticSeverity Severity = DiagnosticSeverity.Error,
+    int Length = 1)
 {
     public bool IsError => Severity == DiagnosticSeverity.Error;
     public bool IsWarning => Severity == DiagnosticSeverity.Warning;

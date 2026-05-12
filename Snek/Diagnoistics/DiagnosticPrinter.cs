@@ -59,7 +59,8 @@ public class DiagnosticPrinter
             Console.ForegroundColor = ConsoleColor.DarkGray;
             Console.Error.Write("   | ");
             Console.ForegroundColor = color;
-            Console.Error.WriteLine(new string(' ', diagnostic.Column - 1) + "^");
+            Console.Error.WriteLine(
+                new string(' ', diagnostic.Column - 1) + new string('^', diagnostic.Length));
             Console.ResetColor();
         }
     }
