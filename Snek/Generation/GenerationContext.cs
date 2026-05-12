@@ -4,6 +4,8 @@ namespace Snek.Generation;
 
 public class GenerationContext
 {
+    private const string Indent = "    ";
+
     public StringBuilder Output { get; } = new();
     public Stack<string> LabelStack { get; } = new();
     public Dictionary<string, string> StringLiterals { get; } = [];
@@ -19,5 +21,16 @@ public class GenerationContext
         ExternalFunctions.Clear();
         LabelCounter = 0;
         StringCounter = 0;
+    }
+
+    public void Emit(string instruction)
+    {
+        Output.Append(Indent);
+        Output.AppendLine(instruction);
+    }
+
+    public void EmitLine(string text = "")
+    {
+        Output.AppendLine(text);
     }
 }

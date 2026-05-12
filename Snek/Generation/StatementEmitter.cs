@@ -13,6 +13,39 @@ public class StatementEmitter
         _expressions = expressions;
     }
 
+    public void EmitFunction(FunctionDefNode func)
+    {
+        string mangledName = func.Name.Value == "main"
+            ? "_main"
+            : func.Name.Value;
+
+        _ctx.EmitLine($"{mangledName}:");
+        _ctx.Emit("push ebp");
+        _ctx.Emit("mov ebp, esp");
+
+        int paramOffset = 8;
+
+        foreach (ParameterNode param in func.Parameters)
+        {
+            _ctx.Emit($"; param {param.Name.Value} at [ebp+{paramOffset}]");
+            paramOffset += 4;
+        }
+
+        foreach (StatementNode stmt in func.Body)
+        {
+            Emit(stmt);
+        }
+
+        if (func.ReturnType?.Name.Value == "void")
+        {
+            _ctx.Emit("xor eax, eax");
+        }
+
+        _ctx.Emit("leave");
+        _ctx.Emit("ret");
+        _ctx.EmitLine();
+    }
+
     public void Emit(StatementNode stmt)
     {
         switch (stmt)
@@ -34,7 +67,7 @@ public class StatementEmitter
                 break;
 
             default:
-                _ctx.Output.AppendLine("    ; unsupported statement");
+                _ctx.Emit("; unsupported statement");
                 break;
         }
     }
@@ -42,14 +75,14 @@ public class StatementEmitter
     private void EmitExpressionStatement(ExpressionStatementNode stmt)
     {
         _expressions.Emit(stmt.Expression);
-        _ctx.Output.AppendLine("    pop eax");
+        _ctx.Emit("pop eax");
     }
 
     private void EmitReturn(ReturnStatementNode ret)
     {
         if (ret.Value == null)
         {
-            _ctx.Output.AppendLine("    xor eax, eax");
+            _ctx.Emit("xor eax, eax");
         }
         else
         {
@@ -63,17 +96,17 @@ public class StatementEmitter
         string endLabel = $"_endif_{_ctx.LabelCounter}";
 
         _expressions.Emit(ifs.Condition);
-        _ctx.Output.AppendLine("    pop eax");
-        _ctx.Output.AppendLine("    test eax, eax");
-        _ctx.Output.AppendLine($"    jz {elseLabel}");
+        _ctx.Emit("pop eax");
+        _ctx.Emit("test eax, eax");
+        _ctx.Emit($"jz {elseLabel}");
 
         foreach (StatementNode s in ifs.ThenBody)
         {
             Emit(s);
         }
 
-        _ctx.Output.AppendLine($"    jmp {endLabel}");
-        _ctx.Output.AppendLine($"{elseLabel}:");
+        _ctx.Emit($"jmp {endLabel}");
+        _ctx.EmitLine($"{elseLabel}:");
 
         if (ifs.ElseBody != null)
         {
@@ -83,7 +116,7 @@ public class StatementEmitter
             }
         }
 
-        _ctx.Output.AppendLine($"{endLabel}:");
+        _ctx.EmitLine($"{endLabel}:");
     }
 
     private void EmitWhile(WhileStatementNode whl)
@@ -91,18 +124,18 @@ public class StatementEmitter
         string startLabel = $"_while_{_ctx.LabelCounter}";
         string endLabel = $"_endwhile_{_ctx.LabelCounter++}";
 
-        _ctx.Output.AppendLine($"{startLabel}:");
+        _ctx.EmitLine($"{startLabel}:");
         _expressions.Emit(whl.Condition);
-        _ctx.Output.AppendLine("    pop eax");
-        _ctx.Output.AppendLine("    test eax, eax");
-        _ctx.Output.AppendLine($"    jz {endLabel}");
+        _ctx.Emit("pop eax");
+        _ctx.Emit("test eax, eax");
+        _ctx.Emit($"jz {endLabel}");
 
         foreach (StatementNode s in whl.Body)
         {
             Emit(s);
         }
 
-        _ctx.Output.AppendLine($"    jmp {startLabel}");
-        _ctx.Output.AppendLine($"{endLabel}:");
+        _ctx.Emit($"jmp {startLabel}");
+        _ctx.EmitLine($"{endLabel}:");
     }
 }
