@@ -85,6 +85,11 @@ public class ExpressionEmitter
             target = "[printf]";
             _ctx.ExternalFunctions.Add("printf");
         }
+        else if (callee == "pause")
+        {
+            target = "[_getch]";
+            _ctx.ExternalFunctions.Add("_getch");
+        }
         else if (_ctx.ExternalFunctions.Contains(callee))
         {
             target = $"[{callee}]";

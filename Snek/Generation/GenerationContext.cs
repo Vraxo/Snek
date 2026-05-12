@@ -20,7 +20,7 @@ public class GenerationContext
         // Comparison
         "cmp",
         // Control flow
-        "jmp", "call", "ret", "retn", "retf", "int", "iret", "loop",
+        "jmp", "call", "ret", "retn", "retf", "int", "iret", "loop", "pause",
         "je", "jne", "jz", "jnz", "ja", "jb", "jg", "jl", "jge", "jle",
         // Conditional set
         "sete", "setne", "setz", "setnz",

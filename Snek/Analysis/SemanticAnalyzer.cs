@@ -301,8 +301,8 @@ public class SemanticAnalyzer : ISemanticAnalyzer
             return ft.ReturnType;
         }
 
-        // Built-in: print returns NoneType
-        if (calleeName == "print")
+        // Built-ins: print returns NoneType, pause returns NoneType
+        if (calleeName is "print" or "pause")
         {
             return "NoneType";
         }

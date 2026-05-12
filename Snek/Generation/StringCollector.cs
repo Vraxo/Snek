@@ -53,8 +53,20 @@ public class StringCollector
             return;
         }
 
-        if (id.Name.Value is "main" or "print")
+        if (id.Name.Value is "main")
         {
+            return;
+        }
+
+        if (id.Name.Value is "print")
+        {
+            _ctx.ExternalFunctions.Add("printf");
+            return;
+        }
+
+        if (id.Name.Value is "pause")
+        {
+            _ctx.ExternalFunctions.Add("_getch");
             return;
         }
 

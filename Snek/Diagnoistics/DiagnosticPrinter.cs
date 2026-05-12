@@ -57,10 +57,11 @@ public class DiagnosticPrinter
             Console.Error.WriteLine(line);
 
             Console.ForegroundColor = ConsoleColor.DarkGray;
+            int pad = int.Max(0, diagnostic.Column - 1);
             Console.Error.Write("   | ");
             Console.ForegroundColor = color;
             Console.Error.WriteLine(
-                new string(' ', diagnostic.Column - 1) + new string('^', diagnostic.Length));
+                new string(' ', pad) + new string('^', diagnostic.Length));
             Console.ResetColor();
         }
     }
