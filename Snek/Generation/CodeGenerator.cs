@@ -1,37 +1,29 @@
-﻿using Snek.Ast;
+using Snek.Ast;
 using Snek.Lexer;
 using Snek.Pipeline;
 using System.Reflection;
-using System.Text;
 
 namespace Snek.Generation;
 
 public class CodeGenerator : ICodeGenerator
 {
-    private readonly StringBuilder _output = new();
-    private readonly Stack<string> _labelStack = new();
-    private readonly Dictionary<string, string> _stringLiterals = [];
-    private readonly HashSet<string> _externalFunctions = [];
-    private int _labelCounter;
-    private int _stringCounter;
-    private CompilationContext _context = null!;
+    private readonly GenerationContext _ctx = new();
+    private ExpressionEmitter _expressions = null!;
+    private StatementEmitter _statements = null!;
+    private CompilationContext _compilationContext = null!;
 
     public string? Generate(AstNode root, CompilationContext context)
     {
-        _context = context;
-        _output.Clear();
-        _labelStack.Clear();
-        _stringLiterals.Clear();
-        _externalFunctions.Clear();
-        _labelCounter = 0;
-        _stringCounter = 0;
+        _compilationContext = context;
+        _ctx.Reset();
+        _expressions = new(_ctx);
+        _statements = new(_ctx, _expressions);
 
         if (root is not ProgramNode program)
         {
             return null;
         }
 
-        // First pass: collect string literals and external function references
         CollectStringsAndExternals(program);
 
         EmitHeader();
@@ -50,23 +42,23 @@ public class CodeGenerator : ICodeGenerator
             EmitFunction(func);
         }
 
-        return _output.ToString();
+        return _ctx.Output.ToString();
     }
 
     private void CollectStringsAndExternals(AstNode node)
     {
         if (node is LiteralExpressionNode lit && lit.Value.Type == TokenType.StringLiteral)
         {
-            if (!_stringLiterals.ContainsValue(lit.Value.Value))
+            if (!_ctx.StringLiterals.ContainsValue(lit.Value.Value))
             {
-                _stringLiterals[$"str{_stringCounter++}"] = lit.Value.Value;
+                _ctx.StringLiterals[$"str{_ctx.StringCounter++}"] = lit.Value.Value;
             }
         }
         else if (node is CallExpressionNode call && call.Callee is IdentifierExpressionNode id)
         {
             if (id.Name.Value is not "main" and not "print")
             {
-                _externalFunctions.Add(id.Name.Value);
+                _ctx.ExternalFunctions.Add(id.Name.Value);
             }
         }
 
@@ -95,25 +87,25 @@ public class CodeGenerator : ICodeGenerator
 
     private void EmitHeader()
     {
-        _output.AppendLine("format PE console");
-        _output.AppendLine("entry start");
-        _output.AppendLine();
-        _output.AppendLine("include 'win32a.inc'");
-        _output.AppendLine();
+        _ctx.Output.AppendLine("format PE console");
+        _ctx.Output.AppendLine("entry start");
+        _ctx.Output.AppendLine();
+        _ctx.Output.AppendLine("include 'win32a.inc'");
+        _ctx.Output.AppendLine();
     }
 
     private void EmitDataSection()
     {
-        if (_stringLiterals.Count == 0)
+        if (_ctx.StringLiterals.Count == 0)
         {
             return;
         }
 
-        _output.AppendLine("section '.data' data readable writeable");
+        _ctx.Output.AppendLine("section '.data' data readable writeable");
 
-        foreach ((string? label, string? value) in _stringLiterals)
+        foreach ((string? label, string? value) in _ctx.StringLiterals)
         {
-            _output.Append($"    {label} db ");
+            _ctx.Output.Append($"    {label} db ");
             List<string> parts = [];
 
             foreach (char c in value)
@@ -144,15 +136,16 @@ public class CodeGenerator : ICodeGenerator
             }
 
             parts.Add("0");
-            _output.AppendLine(string.Join(",", parts));
+            _ctx.Output.AppendLine(string.Join(",", parts));
         }
-        _output.AppendLine();
+
+        _ctx.Output.AppendLine();
     }
 
     private void EmitImportSection()
     {
-        _output.AppendLine("section '.idata' import data readable");
-        _output.AppendLine();
+        _ctx.Output.AppendLine("section '.idata' import data readable");
+        _ctx.Output.AppendLine();
 
         Dictionary<string, HashSet<string>> libs = new()
         {
@@ -160,7 +153,7 @@ public class CodeGenerator : ICodeGenerator
             ["msvcrt.dll"] = ["printf"]
         };
 
-        foreach (string func in _externalFunctions)
+        foreach (string func in _ctx.ExternalFunctions)
         {
             libs["msvcrt.dll"].Add(func);
         }
@@ -168,8 +161,8 @@ public class CodeGenerator : ICodeGenerator
         IEnumerable<string> libDefs = libs.Keys
             .Select(lib => $"{lib.Split('.')[0]},'{lib}'");
 
-        _output.AppendLine($"    library {string.Join(",", libDefs)}");
-        _output.AppendLine();
+        _ctx.Output.AppendLine($"    library {string.Join(",", libDefs)}");
+        _ctx.Output.AppendLine();
 
         foreach ((string? libName, HashSet<string>? functions) in libs.OrderBy(k => k.Key))
         {
@@ -179,25 +172,25 @@ public class CodeGenerator : ICodeGenerator
                 .OrderBy(f => f)
                 .Select(f => $"{f},'{f}'");
 
-            _output.AppendLine($"    import {alias}, {string.Join(",", imports)}");
+            _ctx.Output.AppendLine($"    import {alias}, {string.Join(",", imports)}");
         }
 
-        _output.AppendLine();
+        _ctx.Output.AppendLine();
     }
 
     private void EmitTextSectionHeader()
     {
-        _output.AppendLine("section '.text' code readable executable");
-        _output.AppendLine();
+        _ctx.Output.AppendLine("section '.text' code readable executable");
+        _ctx.Output.AppendLine();
     }
 
     private void EmitEntryPoint()
     {
-        _output.AppendLine("start:");
-        _output.AppendLine("    call _main");
-        _output.AppendLine("    push eax");
-        _output.AppendLine("    call [ExitProcess]");
-        _output.AppendLine();
+        _ctx.Output.AppendLine("start:");
+        _ctx.Output.AppendLine("    call _main");
+        _ctx.Output.AppendLine("    push eax");
+        _ctx.Output.AppendLine("    call [ExitProcess]");
+        _ctx.Output.AppendLine();
     }
 
     private void EmitFunction(FunctionDefNode func)
@@ -206,226 +199,30 @@ public class CodeGenerator : ICodeGenerator
             ? "_main"
             : func.Name.Value;
 
-        _output.AppendLine($"{mangledName}:");
-        _output.AppendLine("    push ebp");
-        _output.AppendLine("    mov ebp, esp");
+        _ctx.Output.AppendLine($"{mangledName}:");
+        _ctx.Output.AppendLine("    push ebp");
+        _ctx.Output.AppendLine("    mov ebp, esp");
 
         int paramOffset = 8;
 
         foreach (ParameterNode param in func.Parameters)
         {
-            _output.AppendLine($"    ; param {param.Name.Value} at [ebp+{paramOffset}]");
+            _ctx.Output.AppendLine($"    ; param {param.Name.Value} at [ebp+{paramOffset}]");
             paramOffset += 4;
         }
 
         foreach (StatementNode stmt in func.Body)
         {
-            EmitStatement(stmt);
+            _statements.Emit(stmt);
         }
 
         if (func.ReturnType?.Name.Value == "void")
         {
-            _output.AppendLine("    xor eax, eax");
+            _ctx.Output.AppendLine("    xor eax, eax");
         }
 
-        _output.AppendLine("    leave");
-        _output.AppendLine("    ret");
-        _output.AppendLine();
-    }
-
-    private void EmitStatement(StatementNode stmt)
-    {
-        switch (stmt)
-        {
-            case ExpressionStatementNode expr:
-                EmitExpression(expr.Expression);
-                _output.AppendLine("    pop eax");
-                break;
-
-            case ReturnStatementNode ret:
-                if (ret.Value == null)
-                {
-                    _output.AppendLine("    xor eax, eax");
-                }
-                else
-                {
-                    EmitExpression(ret.Value);
-                }
-                break;
-
-            case IfStatementNode ifs:
-                EmitIf(ifs);
-                break;
-
-            case WhileStatementNode whl:
-                EmitWhile(whl);
-                break;
-        }
-    }
-
-    private void EmitIf(IfStatementNode ifs)
-    {
-        string elseLabel = $"_else_{_labelCounter++}";
-        string endLabel = $"_endif_{_labelCounter}";
-
-        EmitExpression(ifs.Condition);
-        _output.AppendLine("    pop eax");
-        _output.AppendLine("    test eax, eax");
-        _output.AppendLine($"    jz {elseLabel}");
-
-        foreach (StatementNode s in ifs.ThenBody)
-        {
-            EmitStatement(s);
-        }
-
-        _output.AppendLine($"    jmp {endLabel}");
-        _output.AppendLine($"{elseLabel}:");
-
-        if (ifs.ElseBody != null)
-        {
-            foreach (StatementNode s in ifs.ElseBody)
-            {
-                EmitStatement(s);
-            }
-        }
-
-        _output.AppendLine($"{endLabel}:");
-    }
-
-    private void EmitWhile(WhileStatementNode whl)
-    {
-        string startLabel = $"_while_{_labelCounter}";
-        string endLabel = $"_endwhile_{_labelCounter++}";
-
-        _output.AppendLine($"{startLabel}:");
-        EmitExpression(whl.Condition);
-        _output.AppendLine("    pop eax");
-        _output.AppendLine("    test eax, eax");
-        _output.AppendLine($"    jz {endLabel}");
-
-        foreach (StatementNode s in whl.Body)
-        {
-            EmitStatement(s);
-        }
-
-        _output.AppendLine($"    jmp {startLabel}");
-        _output.AppendLine($"{endLabel}:");
-    }
-
-    private void EmitExpression(ExpressionNode expr)
-    {
-        switch (expr)
-        {
-            case LiteralExpressionNode lit:
-                EmitLiteral(lit);
-                break;
-
-            case IdentifierExpressionNode id:
-                _output.AppendLine($"    ; load {id.Name.Value}");
-                _output.AppendLine("    push 0");
-                break;
-
-            case CallExpressionNode call:
-                EmitCall(call);
-                break;
-
-            case BinaryExpressionNode bin:
-                EmitBinary(bin);
-                break;
-        }
-    }
-
-    private void EmitLiteral(LiteralExpressionNode lit)
-    {
-        switch (lit.Value.Type)
-        {
-            case TokenType.StringLiteral:
-                string label = _stringLiterals.First(kvp => kvp.Value == lit.Value.Value).Key;
-                _output.AppendLine($"    push {label}");
-                break;
-
-            case TokenType.IntegerLiteral:
-                _output.AppendLine($"    push {lit.Value.Value}");
-                break;
-
-            case TokenType.KeywordTrue:
-                _output.AppendLine("    push 1");
-                break;
-
-            case TokenType.KeywordFalse:
-                _output.AppendLine("    push 0");
-                break;
-        }
-    }
-
-    private void EmitCall(CallExpressionNode call)
-    {
-        for (int i = call.Arguments.Count - 1; i >= 0; i--)
-        {
-            EmitExpression(call.Arguments[i]);
-        }
-
-        string callee = call.Callee is IdentifierExpressionNode id
-            ? id.Name.Value
-            : "unknown";
-
-        string target;
-
-        if (callee == "print")
-        {
-            target = "[printf]";
-            _externalFunctions.Add("printf");
-        }
-        else
-        {
-            target = callee == "main"
-                ? "_main"
-                : _externalFunctions.Contains(callee) ? $"[{callee}]" : callee;
-        }
-
-        _output.AppendLine($"    call {target}");
-
-        if (call.Arguments.Count > 0)
-        {
-            _output.AppendLine($"    add esp, {call.Arguments.Count * 4}");
-        }
-
-        _output.AppendLine("    push eax");
-    }
-
-    private void EmitBinary(BinaryExpressionNode bin)
-    {
-        EmitExpression(bin.Right);
-        EmitExpression(bin.Left);
-
-        _output.AppendLine("    pop ebx");
-        _output.AppendLine("    pop eax");
-
-        switch (bin.Operator.Type)
-        {
-            case TokenType.Plus:
-                _output.AppendLine("    add eax, ebx");
-                break;
-
-            case TokenType.Minus:
-                _output.AppendLine("    sub eax, ebx");
-                break;
-
-            case TokenType.Star:
-                _output.AppendLine("    imul eax, ebx");
-                break;
-
-            case TokenType.DoubleEquals:
-                _output.AppendLine("    cmp eax, ebx");
-                _output.AppendLine("    sete al");
-                _output.AppendLine("    movzx eax, al");
-                break;
-
-            default:
-                _output.AppendLine("    ; unsupported binary op");
-                break;
-        }
-
-        _output.AppendLine("    push eax");
+        _ctx.Output.AppendLine("    leave");
+        _ctx.Output.AppendLine("    ret");
+        _ctx.Output.AppendLine();
     }
 }
