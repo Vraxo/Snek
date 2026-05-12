@@ -1,4 +1,4 @@
-﻿using Snek.Ast;
+using Snek.Ast;
 using Snek.Lexer;
 
 namespace Snek.Parser;
@@ -248,7 +248,15 @@ public class StatementParser
 
     private List<StatementNode> ParseIndentedBlock()
     {
-        _stream.Consume(TokenType.Indent);
+        if (!_stream.Match(TokenType.Indent))
+        {
+            _stream.ReportError(
+                $"Expected 'Indent' but got '{_stream.Current.Type}'",
+                _stream.Current);
+
+            SyncToBlockEnd();
+            return [];
+        }
 
         List<StatementNode> statements = [];
 
@@ -271,6 +279,17 @@ public class StatementParser
         return statements;
     }
 
+    private void SyncToBlockEnd()
+    {
+        while (_stream.Current.Type != TokenType.Dedent &&
+               _stream.Current.Type != TokenType.Eof)
+        {
+            _stream.Advance();
+        }
+
+        _stream.Match(TokenType.Dedent);
+    }
+
     private void ExpectNewline()
     {
         if (_stream.Match(TokenType.Newline) || _stream.Match(TokenType.Eof))
@@ -278,8 +297,29 @@ public class StatementParser
             return;
         }
 
+        // Inside an indented block, Dedent follows the last statement
+        if (_stream.Current.Type == TokenType.Dedent)
+        {
+            return;
+        }
+
         _stream.ReportError(
             $"Expected newline after statement, got '{_stream.Current.Type}'",
             _stream.Current);
+
+        // Skip to next line to prevent cascading errors
+        SyncToNewline();
+    }
+
+    private void SyncToNewline()
+    {
+        while (_stream.Current.Type != TokenType.Newline &&
+               _stream.Current.Type != TokenType.Dedent &&
+               _stream.Current.Type != TokenType.Eof)
+        {
+            _stream.Advance();
+        }
+
+        _stream.Match(TokenType.Newline);
     }
 }

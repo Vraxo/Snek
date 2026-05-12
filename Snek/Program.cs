@@ -1,4 +1,4 @@
-﻿using Snek.Analysis;
+using Snek.Analysis;
 using Snek.Compiler;
 using Snek.Diagnoistics;
 using Snek.Generation;
@@ -46,10 +46,14 @@ public class Program
 
         if (!result.Success)
         {
-            foreach (Diagnostic diag in result.Diagnostics)
+            string[] sourceLines = source.ReplaceLineEndings("\n").Split('\n');
+            Dictionary<string, string[]> sourceFiles = new()
             {
-                Console.Error.WriteLine(diag.ToString());
-            }
+                [inputPath] = sourceLines
+            };
+
+            DiagnosticPrinter printer = new(result.Diagnostics, sourceFiles);
+            printer.Print();
 
             return;
         }
