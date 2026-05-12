@@ -15,9 +15,7 @@ public class StatementEmitter
 
     public void EmitFunction(FunctionDefNode func)
     {
-        string mangledName = func.Name.Value == "main"
-            ? "_main"
-            : func.Name.Value;
+        string mangledName = _ctx.MangleName(func.Name.Value);
 
         _ctx.EmitLine($"{mangledName}:");
         _ctx.Emit("push ebp");
@@ -36,7 +34,7 @@ public class StatementEmitter
             Emit(stmt);
         }
 
-        if (func.ReturnType?.Name.Value == "void")
+        if (func.ReturnType == null)
         {
             _ctx.Emit("xor eax, eax");
         }

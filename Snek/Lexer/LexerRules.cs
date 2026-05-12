@@ -1,4 +1,4 @@
-﻿namespace Snek.Lexer;
+namespace Snek.Lexer;
 
 public class LexerRules
 {
@@ -29,7 +29,6 @@ public class LexerRules
         Keywords["from"] = TokenType.KeywordFrom;
         Keywords["as"] = TokenType.KeywordAs;
         Keywords["class"] = TokenType.KeywordClass;
-        Keywords["void"] = TokenType.KeywordVoid;
         Keywords["int"] = TokenType.KeywordInt;
         Keywords["string"] = TokenType.KeywordString;
         Keywords["bool"] = TokenType.KeywordBool;

@@ -27,7 +27,7 @@ public class ParserTests
     public void Parse_FunctionDef_CreatesFunctionDefNode()
     {
         string source = """
-            fn main() -> void:
+            fn main():
               pass
             """;
 
@@ -37,7 +37,7 @@ public class ParserTests
         var program = (ProgramNode)ast;
         var func = program.Statements.OfType<FunctionDefNode>().Should().ContainSingle().Subject;
         func.Name.Value.Should().Be("main");
-        func.ReturnType?.Name.Value.Should().Be("void");
+        func.ReturnType.Should().BeNull();
     }
 
     [Fact]
@@ -127,7 +127,7 @@ public class ParserTests
     [Fact]
     public void Parse_ParameterWithTypeAnnotation_ParsesCorrectly()
     {
-        string source = "fn foo(x: int) -> void:\n  pass";
+        string source = "fn foo(x: int):\n  pass";
         AstNode ast = ParseSource(source);
 
         ast.Should().BeOfType<ProgramNode>();

@@ -35,7 +35,7 @@ public class SemanticAnalyzer : ISemanticAnalyzer
             var funcType = new FunctionType(
                 func.Name.Value,
                 func.Parameters,
-                func.ReturnType?.Name.Value ?? "void");
+                func.ReturnType?.Name.Value);
             _globals[func.Name.Value] = new("function", func.Name.Line, func.Name.Column, funcType);
         }
 
@@ -111,7 +111,7 @@ public class SemanticAnalyzer : ISemanticAnalyzer
         }
 
         // Analyze body
-        string returnType = func.ReturnType?.Name.Value ?? "void";
+        string? returnType = func.ReturnType?.Name.Value;
         bool hasReturn = false;
         
         foreach (StatementNode bodyStmt in func.Body)
@@ -126,7 +126,7 @@ public class SemanticAnalyzer : ISemanticAnalyzer
         }
         
         // If function is non-void and has no return statement, report error
-        if (returnType != "void" && !hasReturn && returnType != "Any")
+        if (returnType != null && !hasReturn && returnType != "Any")
         {
             _context.Diagnostics.Add(new Diagnostic(
                 _context.SourceName,
@@ -193,7 +193,7 @@ public class SemanticAnalyzer : ISemanticAnalyzer
     {
         if (ret.Value == null)
         {
-            if (expectedReturnType is not null and not "void" and not "Any")
+            if (expectedReturnType != null && expectedReturnType != "Any")
             {
                 _context.Diagnostics.Add(new Diagnostic(
                     _context.SourceName,

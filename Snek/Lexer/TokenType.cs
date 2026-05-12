@@ -1,4 +1,4 @@
-﻿namespace Snek.Lexer;
+namespace Snek.Lexer;
 
 public enum TokenType
 {
@@ -25,7 +25,6 @@ public enum TokenType
     KeywordAs,
     KeywordClass,
     KeywordDef,  // Alias for fn in alternate syntax
-    KeywordVoid,
     KeywordInt,
     KeywordString,
     KeywordBool,

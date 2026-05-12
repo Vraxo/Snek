@@ -85,11 +85,13 @@ public class ExpressionEmitter
             target = "[printf]";
             _ctx.ExternalFunctions.Add("printf");
         }
+        else if (_ctx.ExternalFunctions.Contains(callee))
+        {
+            target = $"[{callee}]";
+        }
         else
         {
-            target = callee == "main"
-                ? "_main"
-                : _ctx.ExternalFunctions.Contains(callee) ? $"[{callee}]" : callee;
+            target = _ctx.MangleName(callee);
         }
 
         _ctx.Emit($"call {target}");

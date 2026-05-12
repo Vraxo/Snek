@@ -166,7 +166,7 @@ public class StatementParser
         }
         else
         {
-            if (_stream.Match(TokenType.KeywordVoid) || _stream.Match(TokenType.KeywordInt) ||
+            if (_stream.Match(TokenType.KeywordInt) ||
                  _stream.Match(TokenType.KeywordString) || _stream.Match(TokenType.KeywordBool) ||
                  _stream.Match(TokenType.KeywordFloat))
             {
