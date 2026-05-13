@@ -83,12 +83,10 @@ public class ExpressionEmitter
         if (callee == "print")
         {
             target = "[printf]";
-            _ctx.ExternalFunctions.Add("printf");
         }
         else if (callee == "pause")
         {
             target = "[_getch]";
-            _ctx.ExternalFunctions.Add("_getch");
         }
         else if (_ctx.ExternalFunctions.Contains(callee))
         {

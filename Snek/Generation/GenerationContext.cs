@@ -10,27 +10,37 @@ public class GenerationContext
     {
         // General-purpose instructions
         "mov", "push", "pop", "lea", "xchg", "nop",
+
         // Integer arithmetic
         "add", "adc", "sub", "sbb", "inc", "dec", "neg",
         "mul", "imul", "div", "idiv",
+        
         // Bitwise / logical
         "and", "or", "xor", "not", "test",
+        
         // Shift / rotate
         "shl", "shr", "sal", "sar", "rol", "ror", "rcl", "rcr",
+        
         // Comparison
         "cmp",
+        
         // Control flow
         "jmp", "call", "ret", "retn", "retf", "int", "iret", "loop", "pause",
         "je", "jne", "jz", "jnz", "ja", "jb", "jg", "jl", "jge", "jle",
+        
         // Conditional set
         "sete", "setne", "setz", "setnz",
+        
         // Data movement
         "cbw", "cwd", "cdq", "cwde", "movsx", "movzx",
+        
         // Stack
         "pusha", "popa", "pushad", "popad", "pushf", "popf",
         "enter", "leave",
+        
         // String
         "movs", "cmps", "scas", "lods", "stos",
+        
         // FASM directives that clash
         "format", "entry", "include", "section",
         "library", "import", "align",
@@ -56,7 +66,7 @@ public class GenerationContext
 
     public string MangleName(string name)
     {
-        return name is "main" || X86Reserved.Contains(name)
+        return X86Reserved.Contains(name)
             ? $"_{name}"
             : name;
     }

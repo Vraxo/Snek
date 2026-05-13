@@ -53,11 +53,6 @@ public class StringCollector
             return;
         }
 
-        if (id.Name.Value is "main")
-        {
-            return;
-        }
-
         if (id.Name.Value is "print")
         {
             _ctx.ExternalFunctions.Add("printf");

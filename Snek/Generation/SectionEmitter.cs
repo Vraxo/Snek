@@ -65,7 +65,7 @@ public class SectionEmitter
     public void EmitEntryPoint()
     {
         _ctx.EmitLine("start:");
-        _ctx.Emit("call _main");
+        _ctx.Emit("call _start");
         _ctx.Emit("push eax");
         _ctx.Emit("call [ExitProcess]");
         _ctx.EmitLine();

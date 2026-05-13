@@ -13,6 +13,37 @@ public class StatementEmitter
         _expressions = expressions;
     }
 
+    public void EmitEntryPoint(IReadOnlyList<StatementNode> statements)
+    {
+        List<StatementNode> topLevel = statements
+            .Where(s => s is not FunctionDefNode)
+            .ToList();
+
+        if (topLevel.Count == 0)
+        {
+            // No top-level statements — emit an empty _start stub
+            _ctx.EmitLine("_start:");
+            _ctx.Emit("xor eax, eax");
+            _ctx.Emit("ret");
+            _ctx.EmitLine();
+            return;
+        }
+
+        _ctx.EmitLine("_start:");
+        _ctx.Emit("push ebp");
+        _ctx.Emit("mov ebp, esp");
+
+        foreach (StatementNode stmt in topLevel)
+        {
+            Emit(stmt);
+        }
+
+        _ctx.Emit("xor eax, eax");
+        _ctx.Emit("leave");
+        _ctx.Emit("ret");
+        _ctx.EmitLine();
+    }
+
     public void EmitFunction(FunctionDefNode func)
     {
         string mangledName = _ctx.MangleName(func.Name.Value);

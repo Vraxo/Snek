@@ -13,11 +13,7 @@ public class CompilerPipelineTests
     public void Compile_ValidProgram_ReturnsSuccess()
     {
         var pipeline = CreateDefaultPipeline();
-        var source = """
-            fn main() -> void:
-              pass
-
-            """;
+        var source = "pass\n";
 
         var result = pipeline.Compile(source, "test.snek");
 
@@ -71,11 +67,7 @@ public class CompilerPipelineTests
     {
         var options = new PipelineOptions { EnableLogging = true };
         var pipeline = CreateDefaultPipeline(options);
-        var source = """
-            fn main() -> void:
-              pass
-
-            """;
+        var source = "pass\n";
 
         var result = pipeline.Compile(source, "test.snek");
 
@@ -87,11 +79,7 @@ public class CompilerPipelineTests
     public void Compile_AssemblyOutput_ContainsExpectedSections()
     {
         var pipeline = CreateDefaultPipeline();
-        var source = """
-            fn main() -> void:
-              print("hello")
-
-            """;
+        var source = "print(\"hello\")\n";
 
         var result = pipeline.Compile(source, "test.snek");
 

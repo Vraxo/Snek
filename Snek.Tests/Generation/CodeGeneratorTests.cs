@@ -34,10 +34,7 @@ public sealed class CodeGeneratorTests
     [Fact]
     public void Generate_EmptyProgram_ProducesValidHeader()
     {
-        string source = """
-            fn main() -> void:
-              pass
-            """;
+        string source = "pass";
 
         string output = GenerateSource(source);
 
@@ -59,10 +56,7 @@ public sealed class CodeGeneratorTests
     [Fact]
     public void Generate_FunctionCall_EmitsCallInstruction()
     {
-        string source = """
-            fn main() -> void:
-              print("test")
-            """;
+        string source = "print(\"test\")";
         string output = GenerateSource(source);
 
         output.Should().Contain("call [printf]");
@@ -71,10 +65,7 @@ public sealed class CodeGeneratorTests
     [Fact]
     public void Generate_IntegerLiteral_PushesValue()
     {
-        string source = """
-            fn main() -> void:
-              x = 42
-            """;
+        string source = "x = 42";
         string output = GenerateSource(source);
 
         output.Should().Contain("push 42");
@@ -83,10 +74,7 @@ public sealed class CodeGeneratorTests
     [Fact]
     public void Generate_BinaryAddition_EmitsAddInstruction()
     {
-        string source = """
-            fn main() -> void:
-              result = 1 + 2
-            """;
+        string source = "result = 1 + 2";
         string output = GenerateSource(source);
 
         output.Should().Contain("add eax, ebx");
@@ -96,9 +84,8 @@ public sealed class CodeGeneratorTests
     public void Generate_IfStatement_EmitsConditionalJump()
     {
         string source = """
-            fn main() -> void:
-              if true:
-                x = 1
+            if true:
+              x = 1
             """;
 
         string output = GenerateSource(source);
@@ -112,9 +99,8 @@ public sealed class CodeGeneratorTests
     public void Generate_WhileLoop_EmitsLoopStructure()
     {
         string source = """
-            fn main() -> void:
-              while x < 10:
-                x = x + 1
+            while x < 10:
+              x = x + 1
             """;
 
         string output = GenerateSource(source);
@@ -141,10 +127,7 @@ public sealed class CodeGeneratorTests
     [Fact]
     public void Generate_ExternalFunction_DeclaredInImportSection()
     {
-        string source = """
-            fn main() -> void:
-              customFunc()
-            """;
+        string source = "customFunc()";
 
         string output = GenerateSource(source);
 
