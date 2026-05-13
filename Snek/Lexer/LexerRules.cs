@@ -29,10 +29,9 @@ public class LexerRules
         Keywords["from"] = TokenType.KeywordFrom;
         Keywords["as"] = TokenType.KeywordAs;
         Keywords["class"] = TokenType.KeywordClass;
-        Keywords["int"] = TokenType.KeywordInt;
+        Keywords["char"] = TokenType.KeywordChar;
         Keywords["string"] = TokenType.KeywordString;
         Keywords["bool"] = TokenType.KeywordBool;
-        Keywords["float"] = TokenType.KeywordFloat;
         Keywords["true"] = TokenType.KeywordTrue;
         Keywords["false"] = TokenType.KeywordFalse;
         Keywords["none"] = TokenType.KeywordNone;

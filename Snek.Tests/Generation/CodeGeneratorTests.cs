@@ -65,7 +65,7 @@ public sealed class CodeGeneratorTests
     [Fact]
     public void Generate_IntegerLiteral_PushesValue()
     {
-        string source = "x = 42";
+        string source = "42";
         string output = GenerateSource(source);
 
         output.Should().Contain("push 42");
@@ -74,7 +74,7 @@ public sealed class CodeGeneratorTests
     [Fact]
     public void Generate_BinaryAddition_EmitsAddInstruction()
     {
-        string source = "result = 1 + 2";
+        string source = "1 + 2";
         string output = GenerateSource(source);
 
         output.Should().Contain("add eax, ebx");

@@ -30,7 +30,7 @@ public class SemanticAnalyzerTests
     public void Analyze_UndefinedIdentifier_ReportsError()
     {
         string source = """
-            fn test() -> void:
+            fn test():
               return undefinedVar
 
             """;
@@ -43,7 +43,7 @@ public class SemanticAnalyzerTests
     public void Analyze_TypeMismatch_ReturnsError()
     {
         string source = """
-            fn foo() -> int:
+            fn foo() -> i32:
               return "wrong"
 
             """;
@@ -56,7 +56,7 @@ public class SemanticAnalyzerTests
     public void Analyze_NonVoidFunctionWithoutReturn_ReportsError()
     {
         string source = """
-            fn foo() -> int:
+            fn foo() -> i32:
               pass
 
             """;
@@ -70,7 +70,7 @@ public class SemanticAnalyzerTests
     public void Analyze_IfConditionNotBool_ReportsError()
     {
         string source = """
-            fn test() -> void:
+            fn test():
               if "string":
                 pass
 
@@ -84,7 +84,7 @@ public class SemanticAnalyzerTests
     public void Analyze_WhileConditionNotBool_ReportsError()
     {
         string source = """
-            fn test() -> void:
+            fn test():
               while 42:
                 pass
 
@@ -98,10 +98,10 @@ public class SemanticAnalyzerTests
     public void Analyze_FunctionCallWithWrongArity_ReportsError()
     {
         string source = """
-            fn foo(x: int) -> void:
+            fn foo(x: int):
               pass
 
-            fn test() -> void:
+            fn test():
               return foo()
 
             """;
@@ -117,10 +117,10 @@ public class SemanticAnalyzerTests
     public void Analyze_ValidFunctionCall_ResolvesReturnType()
     {
         string source = """
-            fn foo() -> int:
+            fn foo() -> i32:
               return 42
 
-            fn test() -> int:
+            fn test() -> i32:
               return foo()
 
             """;
@@ -137,7 +137,7 @@ public class SemanticAnalyzerTests
     public void Analyze_BinaryExpression_PromotesTypes()
     {
         string source = """
-            fn test() -> float:
+            fn test() -> f64:
               return 1 + 2.5
 
             """;

@@ -53,8 +53,9 @@ public class SemanticAnalyzer : ISemanticAnalyzer
             LiteralExpressionNode lit => lit.Value.Type switch
             {
                 TokenType.StringLiteral => "string",
-                TokenType.IntegerLiteral => "int",
-                TokenType.FloatLiteral => "float",
+                TokenType.CharLiteral => "char",
+                TokenType.IntegerLiteral => "i32",
+                TokenType.FloatLiteral => "f64",
                 TokenType.KeywordTrue or TokenType.KeywordFalse => "bool",
                 TokenType.KeywordNone => "NoneType",
                 _ => null
@@ -231,8 +232,9 @@ public class SemanticAnalyzer : ISemanticAnalyzer
             LiteralExpressionNode lit => lit.Value.Type switch
             {
                 TokenType.StringLiteral => "string",
-                TokenType.IntegerLiteral => "int",
-                TokenType.FloatLiteral => "float",
+                TokenType.CharLiteral => "char",
+                TokenType.IntegerLiteral => "i32",
+                TokenType.FloatLiteral => "f64",
                 TokenType.KeywordTrue or TokenType.KeywordFalse => "bool",
                 TokenType.KeywordNone => "NoneType",
                 _ => "Any"
@@ -321,21 +323,21 @@ public class SemanticAnalyzer : ISemanticAnalyzer
         string? left = AnalyzeExpression(bin.Left);
         string? right = AnalyzeExpression(bin.Right);
 
-        // Arithmetic ops: int/float promotion
+        // Arithmetic ops: i32/f64 promotion
         if (bin.Operator.Type
             is TokenType.Plus
             or TokenType.Minus
             or TokenType.Star
             or TokenType.Slash)
         {
-            if (left == "float" || right == "float")
+            if (left == "f64" || right == "f64")
             {
-                return "float";
+                return "f64";
             }
 
-            if (left == "int" && right == "int")
+            if (left == "i32" && right == "i32")
             {
-                return "int";
+                return "i32";
             }
         }
 

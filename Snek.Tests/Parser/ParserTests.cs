@@ -34,8 +34,8 @@ public class ParserTests
         AstNode ast = ParseSource(source);
 
         ast.Should().BeOfType<ProgramNode>();
-        var program = (ProgramNode)ast;
-        var func = program.Statements.OfType<FunctionDefNode>().Should().ContainSingle().Subject;
+        ProgramNode program = (ProgramNode)ast;
+        FunctionDefNode func = program.Statements.OfType<FunctionDefNode>().Should().ContainSingle().Subject;
         func.Name.Value.Should().Be("main");
         func.ReturnType.Should().BeNull();
     }
@@ -51,8 +51,8 @@ public class ParserTests
         AstNode ast = ParseSource(source);
 
         ast.Should().BeOfType<ProgramNode>();
-        var program = (ProgramNode)ast;
-        var ifStmt = program.Statements.OfType<IfStatementNode>().Should().ContainSingle().Subject;
+        ProgramNode program = (ProgramNode)ast;
+        IfStatementNode ifStmt = program.Statements.OfType<IfStatementNode>().Should().ContainSingle().Subject;
         ifStmt.Condition.Should().BeOfType<LiteralExpressionNode>();
     }
 
@@ -67,8 +67,8 @@ public class ParserTests
         AstNode ast = ParseSource(source);
 
         ast.Should().BeOfType<ProgramNode>();
-        var program = (ProgramNode)ast;
-        var whileStmt = program.Statements.OfType<WhileStatementNode>().Should().ContainSingle().Subject;
+        ProgramNode program = (ProgramNode)ast;
+        WhileStatementNode whileStmt = program.Statements.OfType<WhileStatementNode>().Should().ContainSingle().Subject;
         whileStmt.Condition.Should().BeOfType<BinaryExpressionNode>();
     }
 
@@ -76,16 +76,16 @@ public class ParserTests
     public void Parse_ReturnStatement_CreatesReturnStatementNode()
     {
         string source = """
-            fn foo() -> int:
+            fn foo() -> i32:
               return 42
             """;
 
         AstNode ast = ParseSource(source);
 
         ast.Should().BeOfType<ProgramNode>();
-        var program = (ProgramNode)ast;
-        var func = program.Statements.OfType<FunctionDefNode>().Should().ContainSingle().Subject;
-        var returnStmt = func.Body.OfType<ReturnStatementNode>().Should().ContainSingle().Subject;
+        ProgramNode program = (ProgramNode)ast;
+        FunctionDefNode func = program.Statements.OfType<FunctionDefNode>().Should().ContainSingle().Subject;
+        ReturnStatementNode returnStmt = func.Body.OfType<ReturnStatementNode>().Should().ContainSingle().Subject;
         returnStmt.Value.Should().BeOfType<LiteralExpressionNode>();
     }
 
@@ -96,9 +96,9 @@ public class ParserTests
         AstNode ast = ParseSource(source);
 
         ast.Should().BeOfType<ProgramNode>();
-        var program = (ProgramNode)ast;
-        var exprStmt = program.Statements.OfType<ExpressionStatementNode>().Should().ContainSingle().Subject;
-        var call = exprStmt.Expression.Should().BeOfType<CallExpressionNode>().Subject;
+        ProgramNode program = (ProgramNode)ast;
+        ExpressionStatementNode exprStmt = program.Statements.OfType<ExpressionStatementNode>().Should().ContainSingle().Subject;
+        CallExpressionNode call = exprStmt.Expression.Should().BeOfType<CallExpressionNode>().Subject;
         ((IdentifierExpressionNode)call.Callee).Name.Value.Should().Be("print");
     }
 
@@ -109,9 +109,9 @@ public class ParserTests
         AstNode ast = ParseSource(source);
 
         ast.Should().BeOfType<ProgramNode>();
-        var program = (ProgramNode)ast;
-        var exprStmt = program.Statements.OfType<ExpressionStatementNode>().Should().ContainSingle().Subject;
-        var binary = exprStmt.Expression.Should().BeOfType<BinaryExpressionNode>().Subject;
+        ProgramNode program = (ProgramNode)ast;
+        ExpressionStatementNode exprStmt = program.Statements.OfType<ExpressionStatementNode>().Should().ContainSingle().Subject;
+        BinaryExpressionNode binary = exprStmt.Expression.Should().BeOfType<BinaryExpressionNode>().Subject;
         binary.Operator.Type.Should().Be(TokenType.Plus);
     }
 
@@ -127,14 +127,14 @@ public class ParserTests
     [Fact]
     public void Parse_ParameterWithTypeAnnotation_ParsesCorrectly()
     {
-        string source = "fn foo(x: int):\n  pass";
+        string source = "fn foo(x: i32):\n  pass";
         AstNode ast = ParseSource(source);
 
         ast.Should().BeOfType<ProgramNode>();
-        var program = (ProgramNode)ast;
-        var func = program.Statements.OfType<FunctionDefNode>().Should().ContainSingle().Subject;
-        var param = func.Parameters.Should().ContainSingle().Subject;
+        ProgramNode program = (ProgramNode)ast;
+        FunctionDefNode func = program.Statements.OfType<FunctionDefNode>().Should().ContainSingle().Subject;
+        ParameterNode param = func.Parameters.Should().ContainSingle().Subject;
         param.Name.Value.Should().Be("x");
-        param.TypeAnnotation?.Name.Value.Should().Be("int");
+        param.TypeAnnotation?.Name.Value.Should().Be("i32");
     }
 }

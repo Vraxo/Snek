@@ -166,9 +166,8 @@ public class StatementParser
         }
         else
         {
-            if (_stream.Match(TokenType.KeywordInt) ||
-                 _stream.Match(TokenType.KeywordString) || _stream.Match(TokenType.KeywordBool) ||
-                 _stream.Match(TokenType.KeywordFloat))
+            if (_stream.Match(TokenType.KeywordChar) ||
+                 _stream.Match(TokenType.KeywordString) || _stream.Match(TokenType.KeywordBool))
             {
                 nameToken = _stream.Previous;
             }

@@ -25,10 +25,9 @@ public enum TokenType
     KeywordAs,
     KeywordClass,
     KeywordDef,  // Alias for fn in alternate syntax
-    KeywordInt,
+    KeywordChar,
     KeywordString,
     KeywordBool,
-    KeywordFloat,
     KeywordTrue,
     KeywordFalse,
     KeywordNone,

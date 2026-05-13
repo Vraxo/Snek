@@ -74,7 +74,6 @@ public class Program
         }
 
         string asmDirectory = Path.GetDirectoryName(Path.GetFullPath(asmOutputPath)) ?? ".";
-        new Assembler();
 
         if (Assembler.Assemble(asmOutputPath, asmDirectory))
         {
