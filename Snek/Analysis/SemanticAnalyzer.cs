@@ -52,7 +52,7 @@ public class SemanticAnalyzer : ISemanticAnalyzer
         {
             LiteralExpressionNode lit => lit.Value.Type switch
             {
-                TokenType.StringLiteral => "string",
+                TokenType.StringLiteral => "str",
                 TokenType.CharLiteral => "char",
                 TokenType.IntegerLiteral => "i32",
                 TokenType.FloatLiteral => "f64",
@@ -89,6 +89,9 @@ public class SemanticAnalyzer : ISemanticAnalyzer
                     break;
                 case ReturnStatementNode ret:
                     AnalyzeReturn(ret, expectedReturnType);
+                    break;
+                case VariableDeclarationNode varDecl:
+                    AnalyzeVariableDeclaration(varDecl);
                     break;
             }
         }
@@ -136,6 +139,34 @@ public class SemanticAnalyzer : ISemanticAnalyzer
                 func.Name.Column,
                 DiagnosticSeverity.Error));
         }
+    }
+
+    private void AnalyzeVariableDeclaration(VariableDeclarationNode varDecl)
+    {
+        string varType = varDecl.Type.Name.Value;
+
+        if (_scopes.Peek().Symbols.ContainsKey(varDecl.Name.Value))
+        {
+            _context.Diagnostics.Add(new Diagnostic(
+                _context.SourceName,
+                $"Variable '{varDecl.Name.Value}' already declared in this scope",
+                varDecl.Name.Line, varDecl.Name.Column, DiagnosticSeverity.Error));
+            return;
+        }
+
+        if (varDecl.Initializer != null)
+        {
+            string? initType = AnalyzeExpression(varDecl.Initializer);
+            if (initType != null && initType != varType && varType != "Any")
+            {
+                _context.Diagnostics.Add(new Diagnostic(
+                    _context.SourceName,
+                    $"Type mismatch: cannot assign '{initType}' to variable of type '{varType}'",
+                    varDecl.Name.Line, varDecl.Name.Column, DiagnosticSeverity.Error));
+            }
+        }
+
+        _scopes.Peek().Symbols[varDecl.Name.Value] = new SymbolInfo(varType, varDecl.Name.Line, varDecl.Name.Column);
     }
 
     private void AnalyzeIf(IfStatementNode ifs)
@@ -231,7 +262,7 @@ public class SemanticAnalyzer : ISemanticAnalyzer
         {
             LiteralExpressionNode lit => lit.Value.Type switch
             {
-                TokenType.StringLiteral => "string",
+                TokenType.StringLiteral => "str",
                 TokenType.CharLiteral => "char",
                 TokenType.IntegerLiteral => "i32",
                 TokenType.FloatLiteral => "f64",
@@ -355,8 +386,8 @@ public class SemanticAnalyzer : ISemanticAnalyzer
 
         // String concat
         return bin.Operator.Type == TokenType.Plus
-            && left == "string"
-            && right == "string" ? "string" : "Any";
+            && left == "str"
+            && right == "str" ? "str" : "Any";
     }
 
     private SymbolInfo? LookupSymbol(string name)

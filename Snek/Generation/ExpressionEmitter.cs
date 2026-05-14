@@ -63,8 +63,20 @@ public class ExpressionEmitter
 
     private void EmitIdentifier(IdentifierExpressionNode id)
     {
-        _ctx.Emit($"; load {id.Name.Value}");
-        _ctx.Emit("push 0");
+        if (_ctx.LocalOffsets.TryGetValue(id.Name.Value, out int offset))
+        {
+            // Load from local variable on stack
+            _ctx.Emit($"; load {id.Name.Value} (ebp-{offset})");
+            _ctx.Emit($"mov eax, [ebp-{offset}]");
+            _ctx.Emit("push eax");
+        }
+        else
+        {
+            // Not a local variable (could be global or undefined)
+            // For now, push a placeholder 0 and emit a comment
+            _ctx.Emit($"; load {id.Name.Value} (global/undefined)");
+            _ctx.Emit("push 0");
+        }
     }
 
     private void EmitCall(CallExpressionNode call)

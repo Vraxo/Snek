@@ -13,6 +13,17 @@ public class StatementEmitter
         _expressions = expressions;
     }
 
+    private int ComputeLocalsSize(IEnumerable<StatementNode> statements)
+    {
+        int size = 0;
+        foreach (var stmt in statements)
+        {
+            if (stmt is VariableDeclarationNode)
+                size += 4;
+        }
+        return size;
+    }
+
     public void EmitEntryPoint(IReadOnlyList<StatementNode> statements)
     {
         List<StatementNode> topLevel = statements
@@ -32,6 +43,11 @@ public class StatementEmitter
         _ctx.EmitLine("_start:");
         _ctx.Emit("push ebp");
         _ctx.Emit("mov ebp, esp");
+
+        // Reserve space for local variables
+        int localsSize = ComputeLocalsSize(topLevel);
+        if (localsSize > 0)
+            _ctx.Emit($"sub esp, {localsSize}");
 
         foreach (StatementNode stmt in topLevel)
         {
@@ -93,6 +109,10 @@ public class StatementEmitter
 
             case WhileStatementNode whl:
                 EmitWhile(whl);
+                break;
+
+            case VariableDeclarationNode varDecl:
+                EmitVariableDeclaration(varDecl);
                 break;
 
             default:
@@ -166,5 +186,29 @@ public class StatementEmitter
 
         _ctx.Emit($"jmp {startLabel}");
         _ctx.EmitLine($"{endLabel}:");
+    }
+
+    private void EmitVariableDeclaration(VariableDeclarationNode varDecl)
+    {
+        // Emit initializer
+        if (varDecl.Initializer != null)
+        {
+            _expressions.Emit(varDecl.Initializer);
+        }
+        else
+        {
+            // Default zero-initialize
+            _ctx.Emit("xor eax, eax");
+            _ctx.Emit("push eax");
+        }
+
+        // Allocate stack offset
+        int offset = _ctx.NextLocalOffset;
+        _ctx.LocalOffsets[varDecl.Name.Value] = offset;
+        _ctx.NextLocalOffset += 4;
+
+        // Store value into local variable slot
+        _ctx.Emit("pop eax");
+        _ctx.Emit($"mov [ebp-{offset}], eax");
     }
 }

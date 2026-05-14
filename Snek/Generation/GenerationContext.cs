@@ -53,6 +53,8 @@ public class GenerationContext
     public HashSet<string> ExternalFunctions { get; } = [];
     public int LabelCounter { get; set; }
     public int StringCounter { get; set; }
+    public Dictionary<string, int> LocalOffsets { get; } = new();
+    public int NextLocalOffset { get; set; } = 4;
 
     public void Reset()
     {
@@ -62,6 +64,8 @@ public class GenerationContext
         ExternalFunctions.Clear();
         LabelCounter = 0;
         StringCounter = 0;
+        LocalOffsets.Clear();
+        NextLocalOffset = 4;
     }
 
     public string MangleName(string name)

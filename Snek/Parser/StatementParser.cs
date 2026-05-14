@@ -95,6 +95,12 @@ public class StatementParser
             return new ContinueStatementNode();
         }
 
+        // Check for variable declaration: identifier ':' type ('=' expression)?
+        if (_stream.Current.Type == TokenType.Identifier && _stream.Peek().Type == TokenType.Colon)
+        {
+            return ParseVariableDeclaration();
+        }
+
         ExpressionNode expr = _expressions.ParseExpression();
         ExpectNewline();
         return new ExpressionStatementNode(expr);
@@ -120,6 +126,23 @@ public class StatementParser
         List<StatementNode> body = ParseIndentedBlock();
 
         return new(name, parameters, returnType, body, bodyIndent);
+    }
+
+    private VariableDeclarationNode ParseVariableDeclaration()
+    {
+        Token name = _stream.Consume(TokenType.Identifier);
+        _stream.Consume(TokenType.Colon);
+        TypeNode type = ParseTypeAnnotation();
+        
+        ExpressionNode? initializer = null;
+        
+        if (_stream.Match(TokenType.Equals))
+        {
+            initializer = _expressions.ParseExpression();
+        }
+        
+        ExpectNewline();
+        return new VariableDeclarationNode(name, type, initializer, _expectedIndent);
     }
 
     private List<ParameterNode> ParseParameters()

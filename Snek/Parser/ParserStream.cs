@@ -1,45 +1,48 @@
 using Snek.Diagnoistics;
 using Snek.Lexer;
 using Snek.Pipeline;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace Snek.Parser;
 
 public class ParserStream
 {
-    private readonly IEnumerator<Token> _tokens;
+    private readonly List<Token> _tokens;
     private readonly CompilationContext _context;
+    private int _position;
 
     public Token Current { get; private set; }
     public Token Previous { get; private set; }
 
     public ParserStream(IEnumerable<Token> tokens, CompilationContext context)
     {
-        _tokens = tokens.GetEnumerator();
+        _tokens = tokens.ToList();
         _context = context;
-        Current = new(TokenType.Eof, " ", -1, -1);
+        _position = 0;
+        Current = _tokens.Count > 0 ? _tokens[0] : new(TokenType.Eof, " ", -1, -1);
         Previous = Current;
-
-        Advance(); // Initialize Current
     }
 
     public void Advance()
     {
         Previous = Current;
+        _position++;
+        Current = _position < _tokens.Count ? _tokens[_position] : new(TokenType.Eof, " ", -1, -1);
+    }
 
-        Current = _tokens.MoveNext()
-            ? _tokens.Current
-            : new(TokenType.Eof, " ", -1, -1);
+    public Token Peek(int offset = 1)
+    {
+        int index = _position + offset;
+        if (index >= 0 && index < _tokens.Count)
+            return _tokens[index];
+        return new(TokenType.Eof, "", -1, -1);
     }
 
     public bool Match(TokenType type)
     {
-        if (Current.Type != type)
-        {
-            return false;
-        }
-
+        if (Current.Type != type) return false;
         Advance();
-
         return true;
     }
 
@@ -51,7 +54,6 @@ public class ParserStream
             Advance();
             return token;
         }
-
         ReportError($"Expected '{type}' but got '{Current.Value}'", Current);
         return Current;
     }
