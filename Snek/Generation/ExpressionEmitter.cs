@@ -81,11 +81,6 @@ public class ExpressionEmitter
 
     private void EmitCall(CallExpressionNode call)
     {
-        for (int i = call.Arguments.Count - 1; i >= 0; i--)
-        {
-            Emit(call.Arguments[i]);
-        }
-
         string callee = call.Callee is IdentifierExpressionNode id
             ? id.Name.Value
             : "unknown";
@@ -94,7 +89,9 @@ public class ExpressionEmitter
 
         if (callee == "print")
         {
-            target = "[printf]";
+            // Handle print with proper format string
+            EmitPrintCall(call);
+            return;
         }
         else if (callee == "pause")
         {
@@ -109,6 +106,12 @@ public class ExpressionEmitter
             target = _ctx.MangleName(callee);
         }
 
+        // Normal function call: push arguments right-to-left
+        for (int i = call.Arguments.Count - 1; i >= 0; i--)
+        {
+            Emit(call.Arguments[i]);
+        }
+
         _ctx.Emit($"call {target}");
 
         if (call.Arguments.Count > 0)
@@ -117,6 +120,69 @@ public class ExpressionEmitter
         }
 
         _ctx.Emit("push eax");
+    }
+
+    private void EmitPrintCall(CallExpressionNode call)
+    {
+        if (call.Arguments.Count == 0)
+        {
+            // No arguments: just print newline
+            string formatLabel = GetOrCreateFormatString("\n");
+            _ctx.Emit($"push {formatLabel}");
+            _ctx.Emit("call [printf]");
+            _ctx.Emit("add esp, 4");
+            _ctx.Emit("push eax");
+            return;
+        }
+
+        // Check the type of the first argument
+        ExpressionNode arg = call.Arguments[0];
+        
+        if (IsStringLiteral(arg))
+        {
+            // String literal: just push the string (no format string needed)
+            Emit(arg);
+            _ctx.Emit("call [printf]");
+            _ctx.Emit("add esp, 4");
+        }
+        else
+        {
+            // For integers and other types, use format string
+            string formatLabel = GetOrCreateFormatString("%d\n");
+            
+            // Push value first (rightmost argument for cdecl)
+            Emit(arg);
+            
+            // Then push format string (leftmost argument)
+            _ctx.Emit($"push {formatLabel}");
+            
+            _ctx.Emit("call [printf]");
+            _ctx.Emit("add esp, 8"); // format string (4 bytes) + value (4 bytes)
+        }
+        
+        _ctx.Emit("push eax");
+    }
+
+    private bool IsStringLiteral(ExpressionNode expr)
+    {
+        return expr is LiteralExpressionNode lit 
+            && lit.Value.Type == TokenType.StringLiteral;
+    }
+
+    private string GetOrCreateFormatString(string format)
+    {
+        // Find existing format string or create new one
+        foreach (var kvp in _ctx.StringLiterals)
+        {
+            if (kvp.Value == format)
+            {
+                return kvp.Key;
+            }
+        }
+        
+        string label = $"fmt{_ctx.StringCounter++}";
+        _ctx.StringLiterals[label] = format;
+        return label;
     }
 
     private void EmitBinary(BinaryExpressionNode bin)

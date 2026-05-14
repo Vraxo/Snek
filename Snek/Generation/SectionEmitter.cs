@@ -73,50 +73,50 @@ public class SectionEmitter
 
     private static string EncodeStringLiteral(string value)
     {
-        List<string> parts = [];
+        var parts = new List<string>();
+        bool inQuoted = false;
 
-        foreach (char c in value)
+        for (int i = 0; i < value.Length; i++)
         {
-            if (IsSpecialCharacter(c))
+            char c = value[i];
+            if (NeedsByteEncoding(c))
             {
-                CloseOpenStringPart(parts);
+                // Close any open quoted segment
+                if (inQuoted)
+                {
+                    parts[^1] += "'";
+                    inQuoted = false;
+                }
+                // Add the numeric byte value
                 parts.Add(((byte)c).ToString());
             }
             else
             {
-                AppendToStringPart(parts, c);
+                if (!inQuoted)
+                {
+                    parts.Add("'");
+                    inQuoted = true;
+                }
+                parts[^1] += c;
             }
         }
 
-        CloseOpenStringPart(parts);
+        // Close final quoted segment if open
+        if (inQuoted)
+        {
+            parts[^1] += "'";
+        }
+
+        // Add null terminator
         parts.Add("0");
 
         return string.Join(",", parts);
     }
 
-    private static bool IsSpecialCharacter(char c)
+    private static bool NeedsByteEncoding(char c)
     {
-        return c is '\n' or '\t' or '\r' or '\'' or '"';
-    }
-
-    private static void CloseOpenStringPart(List<string> parts)
-    {
-        if (parts.Count == 0 || parts[^1].EndsWith(","))
-        {
-            return;
-        }
-
-        parts[^1] += "'";
-    }
-
-    private static void AppendToStringPart(List<string> parts, char c)
-    {
-        if (parts.Count == 0 || parts[^1].EndsWith(","))
-        {
-            parts.Add("'");
-        }
-
-        parts[^1] += c;
+        // Characters that must be encoded as numeric bytes: newline, tab, carriage return, quote, backslash, etc.
+        return c is '\n' or '\t' or '\r' or '\'' or '"' or '\\';
     }
 
     private Dictionary<string, HashSet<string>> BuildImportLibrary()

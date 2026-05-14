@@ -56,6 +56,25 @@ public class StringCollector
         if (id.Name.Value is "print")
         {
             _ctx.ExternalFunctions.Add("printf");
+            
+            // Check if we need format strings for non-string arguments
+            if (call.Arguments.Count > 0 && !IsStringLiteral(call.Arguments[0]))
+            {
+                // Ensure integer format string is collected
+                if (!_ctx.StringLiterals.ContainsValue("%d\n"))
+                {
+                    _ctx.StringLiterals[$"fmt{_ctx.StringCounter++}"] = "%d\n";
+                }
+            }
+            else if (call.Arguments.Count == 0)
+            {
+                // Empty print - just newline
+                if (!_ctx.StringLiterals.ContainsValue("\n"))
+                {
+                    _ctx.StringLiterals[$"fmt{_ctx.StringCounter++}"] = "\n";
+                }
+            }
+            
             return;
         }
 
@@ -66,6 +85,12 @@ public class StringCollector
         }
 
         _ctx.ExternalFunctions.Add(id.Name.Value);
+    }
+
+    private bool IsStringLiteral(ExpressionNode expr)
+    {
+        return expr is LiteralExpressionNode lit 
+            && lit.Value.Type == TokenType.StringLiteral;
     }
 
     private void WalkChildren(AstNode node)
