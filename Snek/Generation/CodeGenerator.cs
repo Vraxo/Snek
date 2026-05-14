@@ -35,10 +35,12 @@ public class CodeGenerator : ICodeGenerator
         // Emit all function definitions first
         foreach (StatementNode stmt in program.Statements)
         {
-            if (stmt is FunctionDefNode func)
+            if (stmt is not FunctionDefNode func)
             {
-                _statements.EmitFunction(func);
+                continue;
             }
+
+            _statements.EmitFunction(func);
         }
 
         // Emit implicit entry point from top-level statements

@@ -134,4 +134,93 @@ public sealed class CodeGeneratorTests
         output.Should().Contain("section '.idata'");
         output.Should().Contain("customFunc");
     }
+
+    [Fact]
+    public void DeclareAndUseVariable_ShouldStoreAndLoadValue()
+    {
+        string source = """
+            x: i32 = 42
+            print(x)
+            """;
+
+        string output = GenerateSource(source);
+
+        output.Should().Contain("mov [ebp-4], eax");  // Store x
+        output.Should().Contain("mov eax, [ebp-4]");  // Load x
+        output.Should().Contain("push eax");          // Pass to print
+    }
+
+    [Fact]
+    public void StringVariable_ShouldStoreString()
+    {
+        string source = """
+            msg: str = "Hello"
+            print(msg)
+            """;
+
+        string output = GenerateSource(source);
+
+        output.Should().Contain("section '.data'");
+        output.Should().Contain("Hello");
+        output.Should().Contain("mov [ebp-4], eax");
+    }
+
+    [Fact]
+    public void MultipleVariables_ShouldGetDifferentOffsets()
+    {
+        string source = """
+            a: i32 = 1
+            b: i32 = 2
+            c: i32 = a + b
+            """;
+
+        string output = GenerateSource(source);
+
+        output.Should().Contain("[ebp-4]");  // a
+        output.Should().Contain("[ebp-8]");  // b
+        output.Should().Contain("[ebp-12]"); // c
+    }
+
+    [Fact]
+    public void VariableWithoutInitializer_ShouldDefaultToZero()
+    {
+        string source = "x: i32";
+
+        string output = GenerateSource(source);
+
+        output.Should().Contain("xor eax, eax");
+        output.Should().Contain("mov [ebp-4], eax");
+    }
+
+    [Fact]
+    public void TypeMismatch_ShouldReportError()
+    {
+        string source = "x: i32 = \"hello\"";
+        var lexer = new Snek.Lexer.Lexer();
+        var parser = new Snek.Parser.Parser();
+        var analyzer = new SemanticAnalyzer();
+        var context = new CompilationContext("test.snek", new());
+
+        var tokens = lexer.Tokenize(source, context);
+        var ast = parser.Parse(tokens, context);
+        analyzer.Analyze(ast, context);
+
+        context.Diagnostics.Should().Contain(d => d.Message.Contains("Type mismatch"));
+    }
+
+    [Fact]
+    public void UndefinedVariable_ShouldReportError()
+    {
+        string source = "print(undefinedVar)";
+        var lexer = new Snek.Lexer.Lexer();
+        var parser = new Snek.Parser.Parser();
+        var analyzer = new SemanticAnalyzer();
+        var context = new CompilationContext("test.snek", new());
+
+        var tokens = lexer.Tokenize(source, context);
+        var ast = parser.Parse(tokens, context);
+        analyzer.Analyze(ast, context);
+
+        context.Diagnostics.Should().Contain(d => d.Message.Contains("Undefined identifier"));
+    }
 }
