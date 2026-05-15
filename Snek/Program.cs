@@ -1,150 +1,64 @@
-using Snek.Analysis;
 using Snek.Compiler;
-using Snek.Diagnoistics;
-using Snek.Generation;
-using Snek.Lexer;
-using Snek.Pipeline;
+using System.CommandLine;
 
 namespace Snek;
 
 public class Program
 {
-    public static void Main(string[] args)
+    public static async Task<int> Main(string[] args)
     {
-        if (args.Length == 0)
+        RootCommand rootCommand = new("Snek Compiler - compiles .snek files to executables");
+
+        Argument<string> inputArgument = new("input")
         {
-            Console.WriteLine("Snek Compiler v0.1");
-            Console.WriteLine("Usage: snek <input.snek> [options]");
-            Console.WriteLine("Options:");
-            Console.WriteLine("  --output <file>  Specify output file (default: output.exe)");
-            Console.WriteLine("  --syntax <name>  Use alternate syntax: python, cstyle (default: python)");
-            Console.WriteLine("  --verbose        Enable detailed logging");
-            Console.WriteLine("  --asm-only       Stop after generating assembly (do not assemble)");
-            return;
-        }
-
-        string inputPath = args[0];
-        CompilerOptions options = ParseOptions(args);
-
-        if (!File.Exists(inputPath))
-        {
-            Console.Error.WriteLine($"Error: Input file not found: {inputPath}");
-            return;
-        }
-
-        string source = File.ReadAllText(inputPath);
-        PipelineOptions pipelineOptions = new() { EnableLogging = options.Verbose };
-
-        LexerRules lexerRules = GetLexerRules(options.Syntax);
-        Lexer.Lexer lexer = new(lexerRules);
-        Parser.Parser parser = new(lexerRules);
-        SemanticAnalyzer analyzer = new();
-        CodeGenerator generator = new();
-
-        CompilerPipeline pipeline = new(lexer, parser, analyzer, generator, pipelineOptions);
-        CompilationResult result = pipeline.Compile(source, inputPath);
-
-        if (!result.Success)
-        {
-            string[] sourceLines = source.ReplaceLineEndings("\n").Split('\n');
-            Dictionary<string, string[]> sourceFiles = new()
-            {
-                [inputPath] = sourceLines
-            };
-
-            IReadOnlyList<Diagnostic> deduped = DeduplicateDiagnostics(result.Diagnostics);
-
-            DiagnosticPrinter printer = new(deduped, sourceFiles);
-            printer.Print();
-
-            return;
-        }
-
-        string asmOutputPath = options.OutputPath ?? "output.asm";
-
-        string exeOutputPath = options.OutputPath?.Replace(".asm", ".exe")
-            ?? "output.exe";
-
-        File.WriteAllText(asmOutputPath, result.Output ?? string.Empty);
-        Console.WriteLine($"Assembly generated: {asmOutputPath}");
-
-        if (options.AsmOnly)
-        {
-            return;
-        }
-
-        string asmDirectory = Path.GetDirectoryName(Path.GetFullPath(asmOutputPath)) ?? ".";
-
-        if (Assembler.Assemble(asmOutputPath, asmDirectory))
-        {
-            Console.WriteLine($"Executable created: {exeOutputPath}");
-        }
-        else
-        {
-            Console.Error.WriteLine("Assembly failed. Check FASM output above.");
-            return;
-        }
-    }
-
-    private static IReadOnlyList<Diagnostic> DeduplicateDiagnostics(IReadOnlyList<Diagnostic> diagnostics)
-    {
-        List<Diagnostic> deduped = [];
-        HashSet<(string, int)> seenLines = [];
-
-        foreach (Diagnostic diag in diagnostics
-            .OrderBy(d => d.SourceName)
-            .ThenBy(d => d.Line)
-            .ThenBy(d => d.Column))
-        {
-            if (seenLines.Add((diag.SourceName, diag.Line)))
-            {
-                deduped.Add(diag);
-            }
-        }
-
-        return deduped;
-    }
-
-    private static CompilerOptions ParseOptions(string[] args)
-    {
-        CompilerOptions options = new();
-
-        for (int i = 1; i < args.Length; i++)
-        {
-            switch (args[i])
-            {
-                case "--output":
-                    if (i + 1 < args.Length)
-                    {
-                        options.OutputPath = args[++i];
-                    }
-                    break;
-
-                case "--syntax":
-                    if (i + 1 < args.Length)
-                    {
-                        options.Syntax = args[++i];
-                    }
-                    break;
-
-                case "--verbose":
-                    options.Verbose = true;
-                    break;
-
-                case "--asm-only":
-                    options.AsmOnly = true;
-                    break;
-            }
-        }
-        return options;
-    }
-
-    private static LexerRules GetLexerRules(string syntax)
-    {
-        return syntax?.ToLowerInvariant() switch
-        {
-            "python" => LexerRules.CreatePythonStyle(),
-            _ => new()
+            Description = "Path to the input .snek file"
         };
+        rootCommand.AddArgument(inputArgument);
+
+        Option<string> outputOption = new(
+            "--output",
+            "Specify output file (default: output.asm or output.exe)");
+
+        outputOption.AddAlias("-o");
+        rootCommand.AddOption(outputOption);
+
+        Option<string> syntaxOption = new(
+            "--syntax",
+            () => "python",
+            "Use alternate syntax: python, cstyle (default: python)");
+
+        rootCommand.AddOption(syntaxOption);
+
+        Option<bool> verboseOption = new(
+            "--verbose",
+            "Enable detailed logging");
+
+        verboseOption.AddAlias("-v");
+        rootCommand.AddOption(verboseOption);
+
+        Option<bool> asmOnlyOption = new(
+            "--asm-only",
+            "Stop after generating assembly (do not assemble)");
+        rootCommand.AddOption(asmOnlyOption);
+
+        rootCommand.SetHandler(async (inputPath, outputPath, syntax, verbose, asmOnly) =>
+        {
+            await Task.Run(() =>
+            {
+                CompilerOptions options = new()
+                {
+                    OutputPath = outputPath,
+                    Syntax = syntax,
+                    Verbose = verbose,
+                    AsmOnly = asmOnly
+                };
+
+                CompilerService compiler = new(options);
+                (bool success, string? assemblyPath, string? executablePath) = compiler.Compile(inputPath);
+                Environment.ExitCode = success ? 0 : 1;
+            });
+        }, inputArgument, outputOption, syntaxOption, verboseOption, asmOnlyOption);
+
+        return await rootCommand.InvokeAsync(args);
     }
 }

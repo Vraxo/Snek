@@ -182,7 +182,7 @@ public sealed class CodeGeneratorTests
     }
 
     [Fact]
-    public void VariableWithoutInitializer_ShouldDefaultToZero()
+    public void Generator_VariableWithoutInitializer_ShouldDefaultToZero()
     {
         string source = "x: i32";
 
@@ -193,32 +193,32 @@ public sealed class CodeGeneratorTests
     }
 
     [Fact]
-    public void TypeMismatch_ShouldReportError()
+    public void Generate_TypeMismatch_ShouldReportError()
     {
         string source = "x: i32 = \"hello\"";
-        var lexer = new Snek.Lexer.Lexer();
-        var parser = new Snek.Parser.Parser();
-        var analyzer = new SemanticAnalyzer();
-        var context = new CompilationContext("test.snek", new());
+        Snek.Lexer.Lexer lexer = new();
+        Snek.Parser.Parser parser = new();
+        SemanticAnalyzer analyzer = new();
+        CompilationContext context = new("test.snek", new());
 
-        var tokens = lexer.Tokenize(source, context);
-        var ast = parser.Parse(tokens, context);
+        IEnumerable<Token> tokens = lexer.Tokenize(source, context);
+        AstNode ast = parser.Parse(tokens, context);
         analyzer.Analyze(ast, context);
 
         context.Diagnostics.Should().Contain(d => d.Message.Contains("Type mismatch"));
     }
 
     [Fact]
-    public void UndefinedVariable_ShouldReportError()
+    public void Generate_UndefinedVariable_ShouldReportError()
     {
         string source = "print(undefinedVar)";
-        var lexer = new Snek.Lexer.Lexer();
-        var parser = new Snek.Parser.Parser();
-        var analyzer = new SemanticAnalyzer();
-        var context = new CompilationContext("test.snek", new());
+        Snek.Lexer.Lexer lexer = new();
+        Snek.Parser.Parser parser = new();
+        SemanticAnalyzer analyzer = new();
+        CompilationContext context = new("test.snek", new());
 
-        var tokens = lexer.Tokenize(source, context);
-        var ast = parser.Parse(tokens, context);
+        IEnumerable<Token> tokens = lexer.Tokenize(source, context);
+        AstNode ast = parser.Parse(tokens, context);
         analyzer.Analyze(ast, context);
 
         context.Diagnostics.Should().Contain(d => d.Message.Contains("Undefined identifier"));
