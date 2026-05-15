@@ -1,17 +1,45 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
+using System.Runtime.InteropServices;
 
 namespace Snek.Compiler;
 
 public class Assembler
 {
+    private static string? FindExecutableInPath(string executableName)
+    {
+        // Get PATH environment variable
+        string? pathEnv = Environment.GetEnvironmentVariable("PATH");
+        if (string.IsNullOrEmpty(pathEnv))
+            return null;
+
+        // Split PATH into directories (platform-specific path separator)
+        char separator = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? ';' : ':';
+        string[] directories = pathEnv.Split(separator, StringSplitOptions.RemoveEmptyEntries);
+
+        // On Windows, if executable doesn't have extension, try .exe, .com, .bat, etc.
+        // But we already have fasm.exe or fasm, so just check existence.
+        foreach (string dir in directories)
+        {
+            string fullPath = Path.Combine(dir, executableName);
+            if (File.Exists(fullPath))
+            {
+                return fullPath;
+            }
+        }
+        return null;
+    }
+
     public static bool Assemble(string asmPath, string outputDir)
     {
-        string fasmPath = Path.Combine(AppContext.BaseDirectory, "fasm", "fasm.exe");
+        // Try to locate fasm executable in the system PATH
+        string fasmExe = OperatingSystem.IsWindows() ? "fasm.exe" : "fasm";
+        string? fasmPath = FindExecutableInPath(fasmExe);
 
-        if (!File.Exists(fasmPath))
+        if (fasmPath == null)
         {
-            Console.Error.WriteLine($"Error: FASM executable not found at '{fasmPath}'");
-            Console.Error.WriteLine("Please ensure FASM is installed in the 'fasm' subdirectory.");
+            Console.Error.WriteLine($"Error: FASM executable '{fasmExe}' not found in PATH.");
+            Console.Error.WriteLine("Please install Flat Assembler (FASM) from https://flatassembler.net/");
+            Console.Error.WriteLine("Ensure the directory containing 'fasm' is added to your PATH environment variable.");
             return false;
         }
 
