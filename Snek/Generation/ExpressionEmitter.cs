@@ -137,7 +137,7 @@ public class ExpressionEmitter
 
         // Check the type of the first argument
         ExpressionNode arg = call.Arguments[0];
-        
+
         if (IsStringLiteral(arg))
         {
             // String literal: just push the string (no format string needed)
@@ -149,37 +149,37 @@ public class ExpressionEmitter
         {
             // For integers and other types, use format string
             string formatLabel = GetOrCreateFormatString("%d\n");
-            
+
             // Push value first (rightmost argument for cdecl)
             Emit(arg);
-            
+
             // Then push format string (leftmost argument)
             _ctx.Emit($"push {formatLabel}");
-            
+
             _ctx.Emit("call [printf]");
             _ctx.Emit("add esp, 8"); // format string (4 bytes) + value (4 bytes)
         }
-        
+
         _ctx.Emit("push eax");
     }
 
-    private bool IsStringLiteral(ExpressionNode expr)
+    private static bool IsStringLiteral(ExpressionNode expr)
     {
-        return expr is LiteralExpressionNode lit 
+        return expr is LiteralExpressionNode lit
             && lit.Value.Type == TokenType.StringLiteral;
     }
 
     private string GetOrCreateFormatString(string format)
     {
         // Find existing format string or create new one
-        foreach (var kvp in _ctx.StringLiterals)
+        foreach (KeyValuePair<string, string> kvp in _ctx.StringLiterals)
         {
             if (kvp.Value == format)
             {
                 return kvp.Key;
             }
         }
-        
+
         string label = $"fmt{_ctx.StringCounter++}";
         _ctx.StringLiterals[label] = format;
         return label;

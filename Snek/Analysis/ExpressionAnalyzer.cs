@@ -54,7 +54,7 @@ public class ExpressionAnalyzer
         };
     }
 
-    private string? AnalyzeLiteral(LiteralExpressionNode lit)
+    private static string? AnalyzeLiteral(LiteralExpressionNode lit)
     {
         return lit.Value.Type switch
         {
@@ -76,17 +76,19 @@ public class ExpressionAnalyzer
             return symbol.Type;
         }
 
-        _context.Diagnostics.Add(new Diagnostic(
+        _context.Diagnostics.Add(new(
             _context.SourceName,
             $"Undefined identifier '{id.Name.Value}'",
-            id.Name.Line, id.Name.Column, DiagnosticSeverity.Error));
+            id.Name.Line,
+            id.Name.Column,
+            DiagnosticSeverity.Error));
+
         return null;
     }
 
     private string? AnalyzeCall(CallExpressionNode call)
     {
-        // Analyze all arguments first
-        foreach (var arg in call.Arguments)
+        foreach (ExpressionNode arg in call.Arguments)
         {
             AnalyzeExpression(arg);
         }
@@ -177,8 +179,15 @@ public class ExpressionAnalyzer
         }
 
         // String concat
-        return bin.Operator.Type == TokenType.Plus
+        if (bin.Operator.Type == TokenType.Plus
             && left == "str"
-            && right == "str" ? "str" : "Any";
+            && right == "str")
+        {
+
+            // String concat
+            return "str";
+        }
+
+        return "Any";
     }
 }

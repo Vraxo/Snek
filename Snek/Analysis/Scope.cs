@@ -2,11 +2,6 @@
 
 public class Scope
 {
-    public Scope? Parent { get; }
+    public Scope? Parent { get; init; }
     public Dictionary<string, SymbolInfo> Symbols { get; } = [];
-
-    public Scope(Scope? parent)
-    {
-        Parent = parent;
-    }
 }
