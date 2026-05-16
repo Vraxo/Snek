@@ -69,7 +69,7 @@ public class SemanticAnalyzer : ISemanticAnalyzer
 
         _scopeManager.AddGlobalSymbol(
             func.Name.Value,
-            new SymbolInfo(TypeKind.Function, func.Name.Line, func.Name.Column, funcType));
+            new(TypeKind.Function, func.Name.Line, func.Name.Column, funcType));
     }
 
     private void AnalyzeAllStatements(ProgramNode program)
