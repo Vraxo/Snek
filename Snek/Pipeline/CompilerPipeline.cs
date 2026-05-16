@@ -2,8 +2,8 @@ using Snek.Analysis;
 using Snek.Ast;
 using Snek.Diagnoistics;
 using Snek.Generation;
-using Snek.Lexer;
-using Snek.Parser;
+using Snek.Lexing;
+using Snek.Parsing;
 
 namespace Snek.Pipeline;
 

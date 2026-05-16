@@ -1,11 +1,8 @@
 ﻿using Snek.Ast;
-using Snek.Lexer;
+using Snek.Lexing;
 
 namespace Snek.Tests;
 
-/// <summary>
-/// Helper methods for creating AST nodes in tests.
-/// </summary>
 public static class TestHelpers
 {
     public static Token CreateToken(TokenType type, string value, int line = 1, int column = 1)

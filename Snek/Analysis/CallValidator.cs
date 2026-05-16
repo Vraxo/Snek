@@ -23,10 +23,14 @@ public class CallValidator
     {
         string? calleeName = ExtractCalleeName(call);
         if (calleeName == null)
+        {
             return TypeKind.Any;
+        }
 
         if (BuiltinFunctionProvider.IsBuiltin(calleeName))
+        {
             return BuiltinFunctionProvider.GetReturnType(calleeName);
+        }
 
         if (TryGetUserDefinedFunction(calleeName, out FunctionType? functionType))
         {

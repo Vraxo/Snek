@@ -16,7 +16,9 @@ public class CodeGenerator : ICodeGenerator
         InitializeComponents();
 
         if (root is not ProgramNode program)
+        {
             return null;
+        }
 
         _stringCollector.Collect(program);
 
@@ -50,7 +52,9 @@ public class CodeGenerator : ICodeGenerator
         foreach (StatementNode statement in program.Statements)
         {
             if (statement is FunctionDefNode function)
+            {
                 _statementEmitter.EmitFunction(function);
+            }
         }
     }
 

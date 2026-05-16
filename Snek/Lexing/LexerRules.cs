@@ -1,4 +1,4 @@
-namespace Snek.Lexer;
+namespace Snek.Lexing;
 
 public class LexerRules
 {

@@ -1,7 +1,8 @@
 using FluentAssertions;
 using Snek.Analysis;
 using Snek.Ast;
-using Snek.Lexer;
+using Snek.Lexing;
+using Snek.Parsing;
 using Snek.Pipeline;
 
 namespace Snek.Tests.Analysis;
@@ -19,8 +20,8 @@ public class SemanticAnalyzerTests
 
     private void AnalyzeSource(string source)
     {
-        Snek.Lexer.Lexer lexer = new();
-        Snek.Parser.Parser parser = new();
+        Lexer lexer = new();
+        Parser parser = new();
         IEnumerable<Token> tokens = lexer.Tokenize(source, _context);
         AstNode ast = parser.Parse(tokens, _context);
         _analyzer.Analyze(ast, _context);
@@ -127,9 +128,14 @@ public class SemanticAnalyzerTests
 
         AnalyzeSource(source);
 
-        string? type = _analyzer.ResolveType(
-            new IdentifierExpressionNode(new(TokenType.Identifier, "x", 1, 1)),
-            _context);
+        // Resolve the type of a call to foo(), which should be i32
+        var callExpr = new CallExpressionNode(
+            new IdentifierExpressionNode(new(TokenType.Identifier, "foo", 1, 1)),
+            new List<ExpressionNode>());
+
+        TypeKind? type = _analyzer.ResolveType(callExpr, _context);
+
+        type.Should().Be(TypeKind.I32);
         _context.Diagnostics.Should().NotContain(d => d.IsError);
     }
 

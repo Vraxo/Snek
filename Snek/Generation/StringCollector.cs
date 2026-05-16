@@ -1,5 +1,5 @@
 using Snek.Ast;
-using Snek.Lexer;
+using Snek.Lexing;
 using System.Reflection;
 
 namespace Snek.Generation;
@@ -56,7 +56,7 @@ public class StringCollector
         if (id.Name.Value is "print")
         {
             _ctx.ExternalFunctions.Add("printf");
-            
+
             // Check if we need format strings for non-string arguments
             if (call.Arguments.Count > 0 && !IsStringLiteral(call.Arguments[0]))
             {
@@ -74,7 +74,7 @@ public class StringCollector
                     _ctx.StringLiterals[$"fmt{_ctx.StringCounter++}"] = "\n";
                 }
             }
-            
+
             return;
         }
 
@@ -89,7 +89,7 @@ public class StringCollector
 
     private bool IsStringLiteral(ExpressionNode expr)
     {
-        return expr is LiteralExpressionNode lit 
+        return expr is LiteralExpressionNode lit
             && lit.Value.Type == TokenType.StringLiteral;
     }
 

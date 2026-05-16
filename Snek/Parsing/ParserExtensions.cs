@@ -1,7 +1,7 @@
-﻿using Snek.Lexer;
+﻿using Snek.Lexing;
 using Snek.Pipeline;
 
-namespace Snek.Parser;
+namespace Snek.Parsing;
 
 public static class ParserExtensions
 {
@@ -49,10 +49,12 @@ public static class ParserExtensions
 
         for (int i = 0; i <= offset && tokens.MoveNext(); i++)
         {
-            if (i == offset)
+            if (i != offset)
             {
-                return tokens.Current;
+                continue;
             }
+
+            return tokens.Current;
         }
 
         return null;

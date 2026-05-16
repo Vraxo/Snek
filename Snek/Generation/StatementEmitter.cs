@@ -41,7 +41,9 @@ public class StatementEmitter
         EmitStatements(function.Body);
 
         if (function.ReturnType == null)
+        {
             _generationContext.Emit("xor eax, eax");
+        }
 
         EmitFunctionEpilogue();
     }
@@ -102,16 +104,20 @@ public class StatementEmitter
     {
         int localsSize = ComputeLocalVariablesSize(topLevelStatements);
         if (localsSize > 0)
+        {
             _generationContext.Emit($"sub esp, {localsSize}");
+        }
     }
 
     private int ComputeLocalVariablesSize(IEnumerable<StatementNode> statements)
     {
         int size = 0;
-        foreach (var statement in statements)
+        foreach (StatementNode statement in statements)
         {
             if (statement is VariableDeclarationNode)
+            {
                 size += 4;
+            }
         }
         return size;
     }

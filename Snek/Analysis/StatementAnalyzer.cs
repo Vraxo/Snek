@@ -1,6 +1,5 @@
 using Snek.Ast;
 using Snek.Diagnoistics;
-using Snek.Lexer;
 using Snek.Pipeline;
 
 namespace Snek.Analysis;
@@ -70,7 +69,9 @@ public class StatementAnalyzer
             {
                 AnalyzeStatement(bodyStmt, returnType);
                 if (bodyStmt is ReturnStatementNode)
+                {
                     hasReturn = true;
+                }
             }
 
             if (returnType.HasValue && returnType != TypeKind.NoneType && !hasReturn && returnType != TypeKind.Any)
@@ -112,9 +113,9 @@ public class StatementAnalyzer
             }
         }
 
-        var symbolInfo = new SymbolInfo(varType, varDecl.Name.Line, varDecl.Name.Column);
+        SymbolInfo symbolInfo = new(varType, varDecl.Name.Line, varDecl.Name.Column);
         _scopeManager.AddSymbol(varDecl.Name.Value, symbolInfo);
-        
+
         if (_scopeManager.IsGlobalScope)
         {
             _scopeManager.AddGlobalSymbol(varDecl.Name.Value, symbolInfo);
@@ -125,7 +126,7 @@ public class StatementAnalyzer
     {
         TypeKind? condType = _expressionAnalyzer.AnalyzeExpression(ifs.Condition);
 
-        if (condType != TypeKind.Bool && condType != null)
+        if (condType is not TypeKind.Bool and not null)
         {
             int conditionLine = ifs.Condition is IdentifierExpressionNode idExpr ? idExpr.Name.Line : -1;
             _context.Diagnostics.Add(new Diagnostic(
@@ -140,7 +141,9 @@ public class StatementAnalyzer
         try
         {
             foreach (StatementNode stmt in ifs.ThenBody)
+            {
                 AnalyzeStatement(stmt, null);
+            }
         }
         finally
         {
@@ -148,13 +151,17 @@ public class StatementAnalyzer
         }
 
         if (ifs.ElseBody == null)
+        {
             return;
+        }
 
         _scopeManager.PushScope();
         try
         {
             foreach (StatementNode stmt in ifs.ElseBody)
+            {
                 AnalyzeStatement(stmt, null);
+            }
         }
         finally
         {
@@ -166,7 +173,7 @@ public class StatementAnalyzer
     {
         TypeKind? condType = _expressionAnalyzer.AnalyzeExpression(whl.Condition);
 
-        if (condType != TypeKind.Bool && condType != null)
+        if (condType is not TypeKind.Bool and not null)
         {
             _context.Diagnostics.Add(new Diagnostic(
                 _context.SourceName,
@@ -177,7 +184,9 @@ public class StatementAnalyzer
         }
 
         foreach (StatementNode stmt in whl.Body)
+        {
             AnalyzeStatement(stmt, null);
+        }
     }
 
     private void AnalyzeReturn(ReturnStatementNode ret, TypeKind? expectedReturnType)
@@ -199,7 +208,9 @@ public class StatementAnalyzer
         TypeKind? actualType = _expressionAnalyzer.AnalyzeExpression(ret.Value);
 
         if (expectedReturnType == null || actualType == null || actualType == expectedReturnType || expectedReturnType == TypeKind.Any)
+        {
             return;
+        }
 
         _context.Diagnostics.Add(new Diagnostic(
             _context.SourceName,

@@ -2,7 +2,7 @@
 using Snek.Pipeline;
 using System.Text;
 
-namespace Snek.Lexer;
+namespace Snek.Lexing;
 
 public class Lexer : ILexer
 {
@@ -89,14 +89,25 @@ public class Lexer : ILexer
 
     private char Peek(int offset = 0)
     {
-        return _position + offset < _source.Length ? _source[_position + offset] : '\0';
+        return _position + offset < _source.Length
+            ? _source[_position + offset]
+            : '\0';
     }
 
     private char Advance()
     {
         char c = _source[_position++];
-        if (c == '\n') { _line++; _column = 1; }
-        else { _column++; }
+
+        if (c == '\n')
+        {
+            _line++;
+            _column = 1;
+        }
+        else
+        {
+            _column++;
+        }
+
         return c;
     }
 

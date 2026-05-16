@@ -1,7 +1,7 @@
 using Snek.Ast;
-using Snek.Lexer;
+using Snek.Lexing;
 
-namespace Snek.Parser;
+namespace Snek.Parsing;
 
 public class StatementParser
 {
@@ -133,14 +133,14 @@ public class StatementParser
         Token name = _stream.Consume(TokenType.Identifier);
         _stream.Consume(TokenType.Colon);
         TypeNode type = ParseTypeAnnotation();
-        
+
         ExpressionNode? initializer = null;
-        
+
         if (_stream.Match(TokenType.Equals))
         {
             initializer = _expressions.ParseExpression();
         }
-        
+
         ExpectNewline();
         return new VariableDeclarationNode(name, type, initializer, _expectedIndent);
     }
@@ -303,8 +303,8 @@ public class StatementParser
 
     private void SyncToBlockEnd()
     {
-        while (_stream.Current.Type != TokenType.Dedent &&
-               _stream.Current.Type != TokenType.Eof)
+        while (_stream.Current.Type is not TokenType.Dedent and
+               not TokenType.Eof)
         {
             _stream.Advance();
         }
@@ -335,9 +335,9 @@ public class StatementParser
 
     private void SyncToNewline()
     {
-        while (_stream.Current.Type != TokenType.Newline &&
-               _stream.Current.Type != TokenType.Dedent &&
-               _stream.Current.Type != TokenType.Eof)
+        while (_stream.Current.Type is not TokenType.Newline and
+               not TokenType.Dedent and
+               not TokenType.Eof)
         {
             _stream.Advance();
         }

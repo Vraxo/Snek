@@ -1,5 +1,3 @@
-using System.Text;
-
 namespace Snek.Generation;
 
 public class SectionEmitter
@@ -73,7 +71,7 @@ public class SectionEmitter
 
     private static string EncodeStringLiteral(string value)
     {
-        var parts = new List<string>();
+        List<string> parts = [];
         bool inQuoted = false;
 
         for (int i = 0; i < value.Length; i++)

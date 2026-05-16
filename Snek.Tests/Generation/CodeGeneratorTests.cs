@@ -2,7 +2,8 @@ using FluentAssertions;
 using Snek.Analysis;
 using Snek.Ast;
 using Snek.Generation;
-using Snek.Lexer;
+using Snek.Lexing;
+using Snek.Parsing;
 using Snek.Pipeline;
 
 namespace Snek.Tests.Generation;
@@ -20,8 +21,8 @@ public sealed class CodeGeneratorTests
 
     private string GenerateSource(string source)
     {
-        Snek.Lexer.Lexer lexer = new();
-        Snek.Parser.Parser parser = new();
+        Lexer lexer = new();
+        Parser parser = new();
         SemanticAnalyzer analyzer = new();
 
         IEnumerable<Token> tokens = lexer.Tokenize(source, _context);
@@ -196,8 +197,8 @@ public sealed class CodeGeneratorTests
     public void Generate_TypeMismatch_ShouldReportError()
     {
         string source = "x: i32 = \"hello\"";
-        Snek.Lexer.Lexer lexer = new();
-        Snek.Parser.Parser parser = new();
+        Lexer lexer = new();
+        Parser parser = new();
         SemanticAnalyzer analyzer = new();
         CompilationContext context = new("test.snek", new());
 
@@ -212,8 +213,8 @@ public sealed class CodeGeneratorTests
     public void Generate_UndefinedVariable_ShouldReportError()
     {
         string source = "print(undefinedVar)";
-        Snek.Lexer.Lexer lexer = new();
-        Snek.Parser.Parser parser = new();
+        Lexer lexer = new();
+        Parser parser = new();
         SemanticAnalyzer analyzer = new();
         CompilationContext context = new("test.snek", new());
 

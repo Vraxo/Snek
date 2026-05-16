@@ -1,17 +1,17 @@
 using FluentAssertions;
-using Snek.Lexer;
+using Snek.Lexing;
 using Snek.Pipeline;
 
-namespace Snek.Tests.Lexer;
+namespace Snek.Tests.Lexing;
 
 public class LexerTests
 {
-    private readonly Snek.Lexer.Lexer _lexer;
+    private readonly Lexer _lexer;
     private readonly CompilationContext _context;
 
     public LexerTests()
     {
-        _lexer = new Snek.Lexer.Lexer();
+        _lexer = new();
         _context = new("test.snek", new());
     }
 

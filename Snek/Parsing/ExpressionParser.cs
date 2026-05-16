@@ -1,7 +1,7 @@
 using Snek.Ast;
-using Snek.Lexer;
+using Snek.Lexing;
 
-namespace Snek.Parser;
+namespace Snek.Parsing;
 
 public class ExpressionParser
 {

@@ -1,6 +1,6 @@
 ﻿using Snek.Pipeline;
 
-namespace Snek.Lexer;
+namespace Snek.Lexing;
 
 public interface ILexer
 {

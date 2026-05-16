@@ -1,6 +1,8 @@
 using FluentAssertions;
 using Snek.Analysis;
 using Snek.Generation;
+using Snek.Lexing;
+using Snek.Parsing;
 using Snek.Pipeline;
 
 namespace Snek.Tests.Pipeline;
@@ -90,8 +92,8 @@ public class CompilerPipelineTests
     private static CompilerPipeline CreateDefaultPipeline(PipelineOptions? options = null)
     {
         return new(
-            new Snek.Lexer.Lexer(),
-            new Snek.Parser.Parser(),
+            new Lexer(),
+            new Parser(),
             new SemanticAnalyzer(),
             new CodeGenerator(),
             options);

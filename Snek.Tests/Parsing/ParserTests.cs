@@ -1,24 +1,25 @@
 using FluentAssertions;
 using Snek.Ast;
-using Snek.Lexer;
+using Snek.Lexing;
+using Snek.Parsing;
 using Snek.Pipeline;
 
-namespace Snek.Tests.Parser;
+namespace Snek.Tests.Parsing;
 
 public class ParserTests
 {
-    private readonly Snek.Parser.Parser _parser;
+    private readonly Parser _parser;
     private readonly CompilationContext _context;
 
     public ParserTests()
     {
-        _parser = new Snek.Parser.Parser();
+        _parser = new Parser();
         _context = new("test.snek", new());
     }
 
     private AstNode ParseSource(string source)
     {
-        Snek.Lexer.Lexer lexer = new();
+        Lexer lexer = new();
         IEnumerable<Token> tokens = lexer.Tokenize(source, _context);
         return _parser.Parse(tokens, _context);
     }

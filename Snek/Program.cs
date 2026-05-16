@@ -13,6 +13,7 @@ public class Program
         {
             Description = "Path to the input .snek file"
         };
+
         rootCommand.AddArgument(inputArgument);
 
         Option<string> outputOption = new(
@@ -45,20 +46,28 @@ public class Program
         {
             await Task.Run(() =>
             {
-                CompilerOptions options = new()
-                {
-                    OutputPath = outputPath,
-                    Syntax = syntax,
-                    Verbose = verbose,
-                    AsmOnly = asmOnly
-                };
-
-                CompilerService compiler = new(options);
-                (bool success, string? assemblyPath, string? executablePath) = compiler.Compile(inputPath);
-                Environment.ExitCode = success ? 0 : 1;
+                RootCommandHandler(inputPath, outputPath, syntax, verbose, asmOnly);
             });
         }, inputArgument, outputOption, syntaxOption, verboseOption, asmOnlyOption);
 
         return await rootCommand.InvokeAsync(args);
+    }
+
+    private static void RootCommandHandler(string inputPath, string outputPath, string syntax, bool verbose, bool asmOnly)
+    {
+        CompilerOptions options = new()
+        {
+            OutputPath = outputPath,
+            Syntax = syntax,
+            Verbose = verbose,
+            AsmOnly = asmOnly
+        };
+
+        CompilerService compiler = new(options);
+        (bool success, string? assemblyPath, string? executablePath) = compiler.Compile(inputPath);
+
+        Environment.ExitCode = success
+            ? 0
+            : 1;
     }
 }

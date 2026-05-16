@@ -1,7 +1,8 @@
 using Snek.Analysis;
 using Snek.Diagnoistics;
 using Snek.Generation;
-using Snek.Lexer;
+using Snek.Lexing;
+using Snek.Parsing;
 using Snek.Pipeline;
 
 namespace Snek.Compiler;
@@ -19,21 +20,12 @@ public class CompilerService
     {
         if (!File.Exists(sourcePath))
         {
-            Console.Error.WriteLine($"Error: Input file not found: {sourcePath}");
+            ReportFileNotFound(sourcePath);
             return (false, null, null);
         }
 
         string source = File.ReadAllText(sourcePath);
-        PipelineOptions pipelineOptions = new() { EnableLogging = _options.Verbose };
-
-        LexerRules lexerRules = GetLexerRules(_options.Syntax);
-        Lexer.Lexer lexer = new(lexerRules);
-        Parser.Parser parser = new(lexerRules);
-        SemanticAnalyzer analyzer = new();
-        CodeGenerator generator = new();
-
-        CompilerPipeline pipeline = new(lexer, parser, analyzer, generator, pipelineOptions);
-        CompilationResult result = pipeline.Compile(source, sourcePath);
+        CompilationResult result = RunCompilerPipeline(source, sourcePath);
 
         if (!result.Success)
         {
@@ -41,67 +33,121 @@ public class CompilerService
             return (false, null, null);
         }
 
-        string asmOutputPath = _options.OutputPath ?? "output.asm";
-        string exeOutputPath = _options.OutputPath?.Replace(".asm", ".exe") ?? "output.exe";
-
-        File.WriteAllText(asmOutputPath, result.Output ?? string.Empty);
-        Console.WriteLine($"Assembly generated: {asmOutputPath}");
+        string asmOutputPath = DetermineAssemblyOutputPath();
+        WriteAssemblyFile(asmOutputPath, result.Output);
 
         if (_options.AsmOnly)
         {
             return (true, asmOutputPath, null);
         }
 
-        string asmDirectory = Path.GetDirectoryName(Path.GetFullPath(asmOutputPath)) ?? ".";
-        if (Assembler.Assemble(asmOutputPath, asmDirectory))
+        bool assemblySucceeded = RunAssembler(asmOutputPath);
+        if (assemblySucceeded)
         {
+            string exeOutputPath = DetermineExecutableOutputPath();
             Console.WriteLine($"Executable created: {exeOutputPath}");
             return (true, asmOutputPath, exeOutputPath);
         }
         else
         {
-            Console.Error.WriteLine("Assembly failed. Check FASM output above.");
             return (false, asmOutputPath, null);
         }
     }
 
-    private void PrintDiagnostics(string source, string sourcePath, IReadOnlyList<Diagnostic> diagnostics)
+    private CompilationResult RunCompilerPipeline(string source, string sourcePath)
+    {
+        PipelineOptions pipelineOptions = new()
+        {
+            EnableLogging = _options.Verbose
+        };
+
+        LexerRules lexerRules = DetermineLexerRules();
+        Lexer lexer = new(lexerRules);
+        Parser parser = new(lexerRules);
+        SemanticAnalyzer analyzer = new();
+        CodeGenerator generator = new();
+
+        CompilerPipeline pipeline = new(lexer, parser, analyzer, generator, pipelineOptions);
+
+        return pipeline.Compile(source, sourcePath);
+    }
+
+    private LexerRules DetermineLexerRules()
+    {
+        string syntax = _options.Syntax ?? string.Empty;
+
+        return syntax.ToLowerInvariant() switch
+        {
+            "python" => LexerRules.CreatePythonStyle(),
+            _ => new()
+        };
+    }
+
+    private string DetermineAssemblyOutputPath()
+    {
+        return _options.OutputPath ?? "output.asm";
+    }
+
+    private string DetermineExecutableOutputPath()
+    {
+        return _options.OutputPath?.Replace(".asm", ".exe") ?? "output.exe";
+    }
+
+    private void WriteAssemblyFile(string asmOutputPath, string? assemblyContent)
+    {
+        File.WriteAllText(asmOutputPath, assemblyContent ?? string.Empty);
+        Console.WriteLine($"Assembly generated: {asmOutputPath}");
+    }
+
+    private bool RunAssembler(string asmOutputPath)
+    {
+        string asmDirectory = Path.GetDirectoryName(Path.GetFullPath(asmOutputPath)) ?? ".";
+        bool success = Assembler.Assemble(asmOutputPath, asmDirectory);
+
+        if (!success)
+        {
+            Console.Error.WriteLine("Assembly failed. Check FASM output above.");
+        }
+
+        return success;
+    }
+
+    private static void ReportFileNotFound(string sourcePath)
+    {
+        Console.Error.WriteLine($"Error: Input file not found: {sourcePath}");
+    }
+
+    private static void PrintDiagnostics(string source, string sourcePath, IReadOnlyList<Diagnostic> diagnostics)
     {
         string[] sourceLines = source.ReplaceLineEndings("\n").Split('\n');
+
         Dictionary<string, string[]> sourceFiles = new()
         {
             [sourcePath] = sourceLines
         };
-        IReadOnlyList<Diagnostic> deduped = DeduplicateDiagnostics(diagnostics);
-        DiagnosticPrinter printer = new(deduped, sourceFiles);
+
+        IReadOnlyList<Diagnostic> uniqueDiagnostics = DeduplicateDiagnostics(diagnostics);
+        DiagnosticPrinter printer = new(uniqueDiagnostics, sourceFiles);
+
         printer.Print();
     }
 
     private static IReadOnlyList<Diagnostic> DeduplicateDiagnostics(IReadOnlyList<Diagnostic> diagnostics)
     {
-        List<Diagnostic> deduped = [];
-        HashSet<(string, int)> seenLines = [];
+        List<Diagnostic> deduplicated = [];
+        HashSet<(string Source, int Line)> seen = [];
 
-        foreach (Diagnostic diag in diagnostics
+        foreach (Diagnostic diagnostic in diagnostics
             .OrderBy(d => d.SourceName)
             .ThenBy(d => d.Line)
             .ThenBy(d => d.Column))
         {
-            if (seenLines.Add((diag.SourceName, diag.Line)))
+            if (seen.Add((diagnostic.SourceName, diagnostic.Line)))
             {
-                deduped.Add(diag);
+                deduplicated.Add(diagnostic);
             }
         }
 
-        return deduped;
-    }
-
-    private static LexerRules GetLexerRules(string syntax)
-    {
-        return syntax?.ToLowerInvariant() switch
-        {
-            "python" => LexerRules.CreatePythonStyle(),
-            _ => new()
-        };
+        return deduplicated;
     }
 }

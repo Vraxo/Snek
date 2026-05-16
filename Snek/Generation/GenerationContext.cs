@@ -53,7 +53,7 @@ public class GenerationContext
     public HashSet<string> ExternalFunctions { get; } = [];
     public int LabelCounter { get; set; }
     public int StringCounter { get; set; }
-    public Dictionary<string, int> LocalOffsets { get; } = new();
+    public Dictionary<string, int> LocalOffsets { get; } = [];
     public int NextLocalOffset { get; set; } = 4;
 
     public void Reset()

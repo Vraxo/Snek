@@ -1,5 +1,5 @@
 using Snek.Ast;
-using Snek.Lexer;
+using Snek.Lexing;
 
 namespace Snek.Generation;
 
@@ -108,7 +108,10 @@ public class ExpressionEmitter
     private string DetermineCallTarget(string calleeName)
     {
         if (_generationContext.ExternalFunctions.Contains(calleeName))
+        {
             return $"[{calleeName}]";
+        }
+
         return _generationContext.MangleName(calleeName);
     }
 
@@ -120,13 +123,17 @@ public class ExpressionEmitter
     private void EmitArgumentsRightToLeft(CallExpressionNode call)
     {
         for (int i = call.Arguments.Count - 1; i >= 0; i--)
+        {
             Emit(call.Arguments[i]);
+        }
     }
 
     private void CleanupStackAfterCall(int argumentCount)
     {
         if (argumentCount > 0)
+        {
             _generationContext.Emit($"add esp, {argumentCount * 4}");
+        }
     }
 
     private void EmitPrintCall(CallExpressionNode call)
@@ -176,10 +183,12 @@ public class ExpressionEmitter
 
     private string EnsureFormatString(string format)
     {
-        foreach (var kvp in _generationContext.StringLiterals)
+        foreach (KeyValuePair<string, string> kvp in _generationContext.StringLiterals)
         {
             if (kvp.Value == format)
+            {
                 return kvp.Key;
+            }
         }
 
         string label = $"fmt{_generationContext.StringCounter++}";

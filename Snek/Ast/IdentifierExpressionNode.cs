@@ -1,4 +1,4 @@
-﻿using Snek.Lexer;
+﻿using Snek.Lexing;
 
 namespace Snek.Ast;
 

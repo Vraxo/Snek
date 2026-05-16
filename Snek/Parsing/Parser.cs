@@ -1,8 +1,8 @@
 ﻿using Snek.Ast;
-using Snek.Lexer;
+using Snek.Lexing;
 using Snek.Pipeline;
 
-namespace Snek.Parser;
+namespace Snek.Parsing;
 
 public class Parser : IParser
 {
