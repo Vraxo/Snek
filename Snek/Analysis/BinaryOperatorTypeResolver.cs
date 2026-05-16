@@ -4,35 +4,49 @@ namespace Snek.Analysis;
 
 public static class BinaryOperatorTypeResolver
 {
-    public static string Resolve(string? leftType, string? rightType, TokenType operatorType)
+    public static TypeKind Resolve(TypeKind? leftType, TypeKind? rightType, TokenType operatorType)
     {
         if (leftType == null || rightType == null)
-            return "Any";
+        {
+            return TypeKind.Any;
+        }
 
         if (IsArithmeticOperator(operatorType))
-            return ResolveArithmeticPromotion(leftType, rightType);
+        {
+            return ResolveArithmeticPromotion(leftType.Value, rightType.Value);
+        }
 
         if (IsComparisonOperator(operatorType))
-            return "bool";
+        {
+            return TypeKind.Bool;
+        }
 
-        if (IsStringConcatenation(operatorType, leftType, rightType))
-            return "str";
+        if (IsStringConcatenation(operatorType, leftType.Value, rightType.Value))
+        {
+            return TypeKind.Str;
+        }
 
-        return "Any";
+        return TypeKind.Any;
     }
 
-    private static string ResolveArithmeticPromotion(string leftType, string rightType)
+    private static TypeKind ResolveArithmeticPromotion(TypeKind leftType, TypeKind rightType)
     {
-        if (leftType == "f64" || rightType == "f64")
-            return "f64";
-        if (leftType == "i32" && rightType == "i32")
-            return "i32";
-        return "Any";
+        if (leftType == TypeKind.F64 || rightType == TypeKind.F64)
+        {
+            return TypeKind.F64;
+        }
+
+        if (leftType == TypeKind.I32 && rightType == TypeKind.I32)
+        {
+            return TypeKind.I32;
+        }
+
+        return TypeKind.Any;
     }
 
-    private static bool IsStringConcatenation(TokenType operatorType, string leftType, string rightType)
+    private static bool IsStringConcatenation(TokenType operatorType, TypeKind leftType, TypeKind rightType)
     {
-        return operatorType == TokenType.Plus && leftType == "str" && rightType == "str";
+        return operatorType == TokenType.Plus && leftType == TypeKind.Str && rightType == TypeKind.Str;
     }
 
     private static bool IsArithmeticOperator(TokenType type)

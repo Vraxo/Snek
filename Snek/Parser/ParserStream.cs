@@ -1,8 +1,6 @@
 using Snek.Diagnoistics;
 using Snek.Lexer;
 using Snek.Pipeline;
-using System.Collections.Generic;
-using System.Linq;
 
 namespace Snek.Parser;
 
@@ -17,10 +15,14 @@ public class ParserStream
 
     public ParserStream(IEnumerable<Token> tokens, CompilationContext context)
     {
-        _tokens = tokens.ToList();
+        _tokens = [.. tokens];
         _context = context;
         _position = 0;
-        Current = _tokens.Count > 0 ? _tokens[0] : new(TokenType.Eof, " ", -1, -1);
+
+        Current = _tokens.Count > 0
+            ? _tokens[0]
+            : new(TokenType.Eof, " ", -1, -1);
+
         Previous = Current;
     }
 
@@ -28,34 +30,46 @@ public class ParserStream
     {
         Previous = Current;
         _position++;
-        Current = _position < _tokens.Count ? _tokens[_position] : new(TokenType.Eof, " ", -1, -1);
+
+        Current = _position < _tokens.Count
+            ? _tokens[_position]
+            : new(TokenType.Eof, " ", -1, -1);
     }
 
     public Token Peek(int offset = 1)
     {
         int index = _position + offset;
+
         if (index >= 0 && index < _tokens.Count)
+        {
             return _tokens[index];
+        }
+
         return new(TokenType.Eof, "", -1, -1);
     }
 
     public bool Match(TokenType type)
     {
-        if (Current.Type != type) return false;
+        if (Current.Type != type)
+        {
+            return false;
+        }
+
         Advance();
         return true;
     }
 
     public Token Consume(TokenType type)
     {
-        if (Current.Type == type)
+        if (Current.Type != type)
         {
-            Token token = Current;
-            Advance();
-            return token;
+            ReportError($"Expected '{type}' but got '{Current.Value}'", Current);
+            return Current;
         }
-        ReportError($"Expected '{type}' but got '{Current.Value}'", Current);
-        return Current;
+
+        Token token = Current;
+        Advance();
+        return token;
     }
 
     public void ReportError(string message, Token atToken)

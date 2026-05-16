@@ -1,6 +1,5 @@
 using Snek.Ast;
 using Snek.Diagnoistics;
-using Snek.Lexer;
 using Snek.Pipeline;
 
 namespace Snek.Analysis;
@@ -23,7 +22,7 @@ public class ExpressionTypeResolver
         _callValidator.Initialize(context);
     }
 
-    public string? Resolve(ExpressionNode expr)
+    public TypeKind? Resolve(ExpressionNode expr)
     {
         return expr switch
         {
@@ -32,33 +31,25 @@ public class ExpressionTypeResolver
             CallExpressionNode call => _callValidator.ValidateAndGetReturnType(call),
             BinaryExpressionNode bin => ResolveBinary(bin),
             UnaryExpressionNode unary => Resolve(unary.Operand),
-            _ => "Any"
+            _ => TypeKind.Any
         };
     }
 
-    private string? GetLiteralType(LiteralExpressionNode lit)
+    private static TypeKind GetLiteralType(LiteralExpressionNode lit)
     {
-        return lit.Value.Type switch
-        {
-            TokenType.StringLiteral => "str",
-            TokenType.CharLiteral => "char",
-            TokenType.IntegerLiteral => "i32",
-            TokenType.FloatLiteral => "f64",
-            TokenType.KeywordTrue or TokenType.KeywordFalse => "bool",
-            TokenType.KeywordNone => "NoneType",
-            _ => "Any"
-        };
+        return TypeKindExtensions.FromTokenType(lit.Value.Type);
     }
 
-    private string? ResolveIdentifier(IdentifierExpressionNode id)
+    private TypeKind? ResolveIdentifier(IdentifierExpressionNode id)
     {
         SymbolInfo? symbol = _scopeManager.LookupSymbol(id.Name.Value);
+
         if (symbol != null)
         {
             return symbol.Type;
         }
 
-        _context.Diagnostics.Add(new(
+        _context.Diagnostics.Add(new Diagnostic(
             _context.SourceName,
             $"Undefined identifier '{id.Name.Value}'",
             id.Name.Line,
@@ -68,11 +59,10 @@ public class ExpressionTypeResolver
         return null;
     }
 
-    private string? ResolveBinary(BinaryExpressionNode bin)
+    private TypeKind ResolveBinary(BinaryExpressionNode bin)
     {
-        string? left = Resolve(bin.Left);
-        string? right = Resolve(bin.Right);
-
+        TypeKind? left = Resolve(bin.Left);
+        TypeKind? right = Resolve(bin.Right);
         return BinaryOperatorTypeResolver.Resolve(left, right, bin.Operator.Type);
     }
 }

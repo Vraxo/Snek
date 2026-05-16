@@ -24,7 +24,7 @@ public class ExpressionAnalyzer
         _typeResolver.Initialize(context);
     }
 
-    public string? AnalyzeExpression(ExpressionNode expr)
+    public TypeKind? AnalyzeExpression(ExpressionNode expr)
     {
         if (expr is CallExpressionNode call)
         {
@@ -43,7 +43,7 @@ public class ExpressionAnalyzer
         }
     }
 
-    public string? ResolveType(ExpressionNode expr)
+    public TypeKind? ResolveType(ExpressionNode expr)
     {
         return _typeResolver.Resolve(expr);
     }

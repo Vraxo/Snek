@@ -5,219 +5,227 @@ namespace Snek.Generation;
 
 public class ExpressionEmitter
 {
-    private readonly GenerationContext _ctx;
+    private readonly GenerationContext _generationContext;
 
-    public ExpressionEmitter(GenerationContext ctx)
+    public ExpressionEmitter(GenerationContext generationContext)
     {
-        _ctx = ctx;
+        _generationContext = generationContext;
     }
 
-    public void Emit(ExpressionNode expr)
+    public void Emit(ExpressionNode expression)
     {
-        switch (expr)
+        switch (expression)
         {
-            case LiteralExpressionNode lit:
-                EmitLiteral(lit);
+            case LiteralExpressionNode literal:
+                EmitLiteralValue(literal);
                 break;
 
-            case IdentifierExpressionNode id:
-                EmitIdentifier(id);
+            case IdentifierExpressionNode identifier:
+                EmitIdentifierAccess(identifier);
                 break;
 
             case CallExpressionNode call:
-                EmitCall(call);
+                EmitFunctionCall(call);
                 break;
 
-            case BinaryExpressionNode bin:
-                EmitBinary(bin);
+            case BinaryExpressionNode binary:
+                EmitBinaryOperation(binary);
                 break;
 
             default:
-                _ctx.Emit("; unsupported expression");
+                _generationContext.Emit("; unsupported expression");
                 break;
         }
     }
 
-    private void EmitLiteral(LiteralExpressionNode lit)
+    private void EmitLiteralValue(LiteralExpressionNode literal)
     {
-        switch (lit.Value.Type)
+        switch (literal.Value.Type)
         {
             case TokenType.StringLiteral:
-                string label = _ctx.StringLiterals.First(kvp => kvp.Value == lit.Value.Value).Key;
-                _ctx.Emit($"push {label}");
+                string label = _generationContext.StringLiterals.First(kvp => kvp.Value == literal.Value.Value).Key;
+                _generationContext.Emit($"push {label}");
                 break;
 
             case TokenType.IntegerLiteral:
-                _ctx.Emit($"push {lit.Value.Value}");
+                _generationContext.Emit($"push {literal.Value.Value}");
                 break;
 
             case TokenType.KeywordTrue:
-                _ctx.Emit("push 1");
+                _generationContext.Emit("push 1");
                 break;
 
             case TokenType.KeywordFalse:
-                _ctx.Emit("push 0");
+                _generationContext.Emit("push 0");
                 break;
         }
     }
 
-    private void EmitIdentifier(IdentifierExpressionNode id)
+    private void EmitIdentifierAccess(IdentifierExpressionNode identifier)
     {
-        if (_ctx.LocalOffsets.TryGetValue(id.Name.Value, out int offset))
+        if (_generationContext.LocalOffsets.TryGetValue(identifier.Name.Value, out int offset))
         {
-            // Load from local variable on stack
-            _ctx.Emit($"; load {id.Name.Value} (ebp-{offset})");
-            _ctx.Emit($"mov eax, [ebp-{offset}]");
-            _ctx.Emit("push eax");
+            _generationContext.Emit($"; load {identifier.Name.Value} (ebp-{offset})");
+            _generationContext.Emit($"mov eax, [ebp-{offset}]");
+            _generationContext.Emit("push eax");
         }
         else
         {
-            // Not a local variable (could be global or undefined)
-            // For now, push a placeholder 0 and emit a comment
-            _ctx.Emit($"; load {id.Name.Value} (global/undefined)");
-            _ctx.Emit("push 0");
+            _generationContext.Emit($"; load {identifier.Name.Value} (global/undefined)");
+            _generationContext.Emit("push 0");
         }
     }
 
-    private void EmitCall(CallExpressionNode call)
+    private void EmitFunctionCall(CallExpressionNode call)
     {
-        string callee = call.Callee is IdentifierExpressionNode id
-            ? id.Name.Value
-            : "unknown";
-
-        string target;
-
-        if (callee == "print")
+        string calleeName = ExtractCalleeName(call);
+        if (calleeName == "print")
         {
-            // Handle print with proper format string
             EmitPrintCall(call);
             return;
         }
-        else if (callee == "pause")
+        if (calleeName == "pause")
         {
-            target = "[_getch]";
-        }
-        else if (_ctx.ExternalFunctions.Contains(callee))
-        {
-            target = $"[{callee}]";
-        }
-        else
-        {
-            target = _ctx.MangleName(callee);
+            EmitPauseCall();
+            return;
         }
 
-        // Normal function call: push arguments right-to-left
+        string callTarget = DetermineCallTarget(calleeName);
+
+        EmitArgumentsRightToLeft(call);
+        _generationContext.Emit($"call {callTarget}");
+        CleanupStackAfterCall(call.Arguments.Count);
+        _generationContext.Emit("push eax");
+    }
+
+    private string ExtractCalleeName(CallExpressionNode call)
+    {
+        return call.Callee is IdentifierExpressionNode identifier
+            ? identifier.Name.Value
+            : "unknown";
+    }
+
+    private string DetermineCallTarget(string calleeName)
+    {
+        if (_generationContext.ExternalFunctions.Contains(calleeName))
+            return $"[{calleeName}]";
+        return _generationContext.MangleName(calleeName);
+    }
+
+    private void EmitPauseCall()
+    {
+        _generationContext.Emit("call [_getch]");
+    }
+
+    private void EmitArgumentsRightToLeft(CallExpressionNode call)
+    {
         for (int i = call.Arguments.Count - 1; i >= 0; i--)
-        {
             Emit(call.Arguments[i]);
-        }
+    }
 
-        _ctx.Emit($"call {target}");
-
-        if (call.Arguments.Count > 0)
-        {
-            _ctx.Emit($"add esp, {call.Arguments.Count * 4}");
-        }
-
-        _ctx.Emit("push eax");
+    private void CleanupStackAfterCall(int argumentCount)
+    {
+        if (argumentCount > 0)
+            _generationContext.Emit($"add esp, {argumentCount * 4}");
     }
 
     private void EmitPrintCall(CallExpressionNode call)
     {
         if (call.Arguments.Count == 0)
         {
-            // No arguments: just print newline
-            string formatLabel = GetOrCreateFormatString("\n");
-            _ctx.Emit($"push {formatLabel}");
-            _ctx.Emit("call [printf]");
-            _ctx.Emit("add esp, 4");
-            _ctx.Emit("push eax");
+            EmitPlainNewline();
             return;
         }
 
-        // Check the type of the first argument
-        ExpressionNode arg = call.Arguments[0];
-
-        if (IsStringLiteral(arg))
+        ExpressionNode firstArgument = call.Arguments[0];
+        if (IsStringLiteral(firstArgument))
         {
-            // String literal: just push the string (no format string needed)
-            Emit(arg);
-            _ctx.Emit("call [printf]");
-            _ctx.Emit("add esp, 4");
+            EmitStringLiteralPrint(firstArgument);
         }
         else
         {
-            // For integers and other types, use format string
-            string formatLabel = GetOrCreateFormatString("%d\n");
-
-            // Push value first (rightmost argument for cdecl)
-            Emit(arg);
-
-            // Then push format string (leftmost argument)
-            _ctx.Emit($"push {formatLabel}");
-
-            _ctx.Emit("call [printf]");
-            _ctx.Emit("add esp, 8"); // format string (4 bytes) + value (4 bytes)
+            EmitFormattedPrint(firstArgument);
         }
-
-        _ctx.Emit("push eax");
+        _generationContext.Emit("push eax");
     }
 
-    private static bool IsStringLiteral(ExpressionNode expr)
+    private void EmitPlainNewline()
     {
-        return expr is LiteralExpressionNode lit
-            && lit.Value.Type == TokenType.StringLiteral;
+        string formatLabel = EnsureFormatString("\n");
+        _generationContext.Emit($"push {formatLabel}");
+        _generationContext.Emit("call [printf]");
+        _generationContext.Emit("add esp, 4");
+        _generationContext.Emit("push eax");
     }
 
-    private string GetOrCreateFormatString(string format)
+    private void EmitStringLiteralPrint(ExpressionNode stringExpression)
     {
-        // Find existing format string or create new one
-        foreach (KeyValuePair<string, string> kvp in _ctx.StringLiterals)
+        Emit(stringExpression);
+        _generationContext.Emit("call [printf]");
+        _generationContext.Emit("add esp, 4");
+    }
+
+    private void EmitFormattedPrint(ExpressionNode valueExpression)
+    {
+        string formatLabel = EnsureFormatString("%d\n");
+        Emit(valueExpression);
+        _generationContext.Emit($"push {formatLabel}");
+        _generationContext.Emit("call [printf]");
+        _generationContext.Emit("add esp, 8");
+    }
+
+    private string EnsureFormatString(string format)
+    {
+        foreach (var kvp in _generationContext.StringLiterals)
         {
             if (kvp.Value == format)
-            {
                 return kvp.Key;
-            }
         }
 
-        string label = $"fmt{_ctx.StringCounter++}";
-        _ctx.StringLiterals[label] = format;
+        string label = $"fmt{_generationContext.StringCounter++}";
+        _generationContext.StringLiterals[label] = format;
         return label;
     }
 
-    private void EmitBinary(BinaryExpressionNode bin)
+    private static bool IsStringLiteral(ExpressionNode expression)
     {
-        Emit(bin.Right);
-        Emit(bin.Left);
+        return expression is LiteralExpressionNode literal
+            && literal.Value.Type == TokenType.StringLiteral;
+    }
 
-        _ctx.Emit("pop ebx");
-        _ctx.Emit("pop eax");
+    private void EmitBinaryOperation(BinaryExpressionNode binary)
+    {
+        Emit(binary.Right);
+        Emit(binary.Left);
 
-        switch (bin.Operator.Type)
+        _generationContext.Emit("pop ebx");
+        _generationContext.Emit("pop eax");
+
+        switch (binary.Operator.Type)
         {
             case TokenType.Plus:
-                _ctx.Emit("add eax, ebx");
+                _generationContext.Emit("add eax, ebx");
                 break;
 
             case TokenType.Minus:
-                _ctx.Emit("sub eax, ebx");
+                _generationContext.Emit("sub eax, ebx");
                 break;
 
             case TokenType.Star:
-                _ctx.Emit("imul eax, ebx");
+                _generationContext.Emit("imul eax, ebx");
                 break;
 
             case TokenType.DoubleEquals:
-                _ctx.Emit("cmp eax, ebx");
-                _ctx.Emit("sete al");
-                _ctx.Emit("movzx eax, al");
+                _generationContext.Emit("cmp eax, ebx");
+                _generationContext.Emit("sete al");
+                _generationContext.Emit("movzx eax, al");
                 break;
 
             default:
-                _ctx.Emit("; unsupported binary op");
+                _generationContext.Emit("; unsupported binary op");
                 break;
         }
 
-        _ctx.Emit("push eax");
+        _generationContext.Emit("push eax");
     }
 }

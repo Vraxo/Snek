@@ -29,7 +29,7 @@ public class SemanticAnalyzer : ISemanticAnalyzer
         AnalyzeAllStatements(program);
     }
 
-    public string? ResolveType(ExpressionNode expr, CompilationContext context)
+    public TypeKind? ResolveType(ExpressionNode expr, CompilationContext context)
     {
         _context = context;
         _expressionAnalyzer.Initialize(context);
@@ -58,14 +58,18 @@ public class SemanticAnalyzer : ISemanticAnalyzer
 
     private void RegisterGlobalFunction(FunctionDefNode func)
     {
+        TypeKind? returnType = func.ReturnType != null
+            ? TypeKindExtensions.FromString(func.ReturnType.Name.Value)
+            : null;
+
         FunctionType funcType = new(
             func.Name.Value,
             func.Parameters,
-            func.ReturnType?.Name.Value);
+            returnType);
 
         _scopeManager.AddGlobalSymbol(
             func.Name.Value,
-            new("function", func.Name.Line, func.Name.Column, funcType));
+            new SymbolInfo(TypeKind.Function, func.Name.Line, func.Name.Column, funcType));
     }
 
     private void AnalyzeAllStatements(ProgramNode program)

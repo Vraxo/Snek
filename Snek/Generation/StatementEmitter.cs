@@ -4,211 +4,209 @@ namespace Snek.Generation;
 
 public class StatementEmitter
 {
-    private readonly GenerationContext _ctx;
-    private readonly ExpressionEmitter _expressions;
+    private readonly GenerationContext _generationContext;
+    private readonly ExpressionEmitter _expressionEmitter;
 
-    public StatementEmitter(GenerationContext ctx, ExpressionEmitter expressions)
+    public StatementEmitter(GenerationContext generationContext, ExpressionEmitter expressionEmitter)
     {
-        _ctx = ctx;
-        _expressions = expressions;
+        _generationContext = generationContext;
+        _expressionEmitter = expressionEmitter;
     }
 
-    private int ComputeLocalsSize(IEnumerable<StatementNode> statements)
+    public void EmitEntryPoint(IReadOnlyList<StatementNode> statements)
+    {
+        List<StatementNode> topLevelStatements = statements
+            .Where(statement => statement is not FunctionDefNode)
+            .ToList();
+
+        if (topLevelStatements.Count == 0)
+        {
+            EmitEmptyEntryPointStub();
+            return;
+        }
+
+        BeginFunctionPrologue();
+        ReserveLocalVariablesSpace(topLevelStatements);
+        EmitStatements(topLevelStatements);
+        EmitFunctionEpilogueWithZeroReturn();
+    }
+
+    public void EmitFunction(FunctionDefNode function)
+    {
+        string mangledName = _generationContext.MangleName(function.Name.Value);
+        _generationContext.EmitLine($"{mangledName}:");
+        BeginFunctionPrologue();
+
+        EmitParameterComments(function.Parameters);
+        EmitStatements(function.Body);
+
+        if (function.ReturnType == null)
+            _generationContext.Emit("xor eax, eax");
+
+        EmitFunctionEpilogue();
+    }
+
+    public void Emit(StatementNode statement)
+    {
+        switch (statement)
+        {
+            case ExpressionStatementNode expressionStatement:
+                EmitExpressionStatement(expressionStatement);
+                break;
+            case ReturnStatementNode returnStatement:
+                EmitReturnStatement(returnStatement);
+                break;
+            case IfStatementNode ifStatement:
+                EmitIfStatement(ifStatement);
+                break;
+            case WhileStatementNode whileStatement:
+                EmitWhileStatement(whileStatement);
+                break;
+            case VariableDeclarationNode variableDeclaration:
+                EmitVariableDeclaration(variableDeclaration);
+                break;
+            default:
+                _generationContext.Emit("; unsupported statement");
+                break;
+        }
+    }
+
+    private void EmitEmptyEntryPointStub()
+    {
+        _generationContext.EmitLine("_start:");
+        _generationContext.Emit("xor eax, eax");
+        _generationContext.Emit("ret");
+        _generationContext.EmitLine();
+    }
+
+    private void BeginFunctionPrologue()
+    {
+        _generationContext.Emit("push ebp");
+        _generationContext.Emit("mov ebp, esp");
+    }
+
+    private void EmitFunctionEpilogueWithZeroReturn()
+    {
+        _generationContext.Emit("xor eax, eax");
+        EmitFunctionEpilogue();
+    }
+
+    private void EmitFunctionEpilogue()
+    {
+        _generationContext.Emit("leave");
+        _generationContext.Emit("ret");
+        _generationContext.EmitLine();
+    }
+
+    private void ReserveLocalVariablesSpace(List<StatementNode> topLevelStatements)
+    {
+        int localsSize = ComputeLocalVariablesSize(topLevelStatements);
+        if (localsSize > 0)
+            _generationContext.Emit($"sub esp, {localsSize}");
+    }
+
+    private int ComputeLocalVariablesSize(IEnumerable<StatementNode> statements)
     {
         int size = 0;
-        foreach (var stmt in statements)
+        foreach (var statement in statements)
         {
-            if (stmt is VariableDeclarationNode)
+            if (statement is VariableDeclarationNode)
                 size += 4;
         }
         return size;
     }
 
-    public void EmitEntryPoint(IReadOnlyList<StatementNode> statements)
+    private void EmitStatements(IEnumerable<StatementNode> statements)
     {
-        List<StatementNode> topLevel = statements
-            .Where(s => s is not FunctionDefNode)
-            .ToList();
-
-        if (topLevel.Count == 0)
+        foreach (StatementNode statement in statements)
         {
-            // No top-level statements — emit an empty _start stub
-            _ctx.EmitLine("_start:");
-            _ctx.Emit("xor eax, eax");
-            _ctx.Emit("ret");
-            _ctx.EmitLine();
-            return;
+            Emit(statement);
         }
-
-        _ctx.EmitLine("_start:");
-        _ctx.Emit("push ebp");
-        _ctx.Emit("mov ebp, esp");
-
-        // Reserve space for local variables
-        int localsSize = ComputeLocalsSize(topLevel);
-        if (localsSize > 0)
-            _ctx.Emit($"sub esp, {localsSize}");
-
-        foreach (StatementNode stmt in topLevel)
-        {
-            Emit(stmt);
-        }
-
-        _ctx.Emit("xor eax, eax");
-        _ctx.Emit("leave");
-        _ctx.Emit("ret");
-        _ctx.EmitLine();
     }
 
-    public void EmitFunction(FunctionDefNode func)
+    private void EmitParameterComments(IEnumerable<ParameterNode> parameters)
     {
-        string mangledName = _ctx.MangleName(func.Name.Value);
-
-        _ctx.EmitLine($"{mangledName}:");
-        _ctx.Emit("push ebp");
-        _ctx.Emit("mov ebp, esp");
-
         int paramOffset = 8;
-
-        foreach (ParameterNode param in func.Parameters)
+        foreach (ParameterNode parameter in parameters)
         {
-            _ctx.Emit($"; param {param.Name.Value} at [ebp+{paramOffset}]");
+            _generationContext.Emit($"; param {parameter.Name.Value} at [ebp+{paramOffset}]");
             paramOffset += 4;
         }
-
-        foreach (StatementNode stmt in func.Body)
-        {
-            Emit(stmt);
-        }
-
-        if (func.ReturnType == null)
-        {
-            _ctx.Emit("xor eax, eax");
-        }
-
-        _ctx.Emit("leave");
-        _ctx.Emit("ret");
-        _ctx.EmitLine();
     }
 
-    public void Emit(StatementNode stmt)
+    private void EmitExpressionStatement(ExpressionStatementNode expressionStatement)
     {
-        switch (stmt)
-        {
-            case ExpressionStatementNode expr:
-                EmitExpressionStatement(expr);
-                break;
-
-            case ReturnStatementNode ret:
-                EmitReturn(ret);
-                break;
-
-            case IfStatementNode ifs:
-                EmitIf(ifs);
-                break;
-
-            case WhileStatementNode whl:
-                EmitWhile(whl);
-                break;
-
-            case VariableDeclarationNode varDecl:
-                EmitVariableDeclaration(varDecl);
-                break;
-
-            default:
-                _ctx.Emit("; unsupported statement");
-                break;
-        }
+        _expressionEmitter.Emit(expressionStatement.Expression);
+        _generationContext.Emit("pop eax");
     }
 
-    private void EmitExpressionStatement(ExpressionStatementNode stmt)
+    private void EmitReturnStatement(ReturnStatementNode returnStatement)
     {
-        _expressions.Emit(stmt.Expression);
-        _ctx.Emit("pop eax");
-    }
-
-    private void EmitReturn(ReturnStatementNode ret)
-    {
-        if (ret.Value == null)
+        if (returnStatement.Value == null)
         {
-            _ctx.Emit("xor eax, eax");
+            _generationContext.Emit("xor eax, eax");
         }
         else
         {
-            _expressions.Emit(ret.Value);
+            _expressionEmitter.Emit(returnStatement.Value);
         }
     }
 
-    private void EmitIf(IfStatementNode ifs)
+    private void EmitIfStatement(IfStatementNode ifStatement)
     {
-        string elseLabel = $"_else_{_ctx.LabelCounter++}";
-        string endLabel = $"_endif_{_ctx.LabelCounter}";
+        string elseLabel = $"_else_{_generationContext.LabelCounter++}";
+        string endLabel = $"_endif_{_generationContext.LabelCounter}";
 
-        _expressions.Emit(ifs.Condition);
-        _ctx.Emit("pop eax");
-        _ctx.Emit("test eax, eax");
-        _ctx.Emit($"jz {elseLabel}");
+        _expressionEmitter.Emit(ifStatement.Condition);
+        _generationContext.Emit("pop eax");
+        _generationContext.Emit("test eax, eax");
+        _generationContext.Emit($"jz {elseLabel}");
 
-        foreach (StatementNode s in ifs.ThenBody)
+        EmitStatements(ifStatement.ThenBody);
+        _generationContext.Emit($"jmp {endLabel}");
+        _generationContext.EmitLine($"{elseLabel}:");
+
+        if (ifStatement.ElseBody != null)
         {
-            Emit(s);
+            EmitStatements(ifStatement.ElseBody);
         }
 
-        _ctx.Emit($"jmp {endLabel}");
-        _ctx.EmitLine($"{elseLabel}:");
-
-        if (ifs.ElseBody != null)
-        {
-            foreach (StatementNode s in ifs.ElseBody)
-            {
-                Emit(s);
-            }
-        }
-
-        _ctx.EmitLine($"{endLabel}:");
+        _generationContext.EmitLine($"{endLabel}:");
     }
 
-    private void EmitWhile(WhileStatementNode whl)
+    private void EmitWhileStatement(WhileStatementNode whileStatement)
     {
-        string startLabel = $"_while_{_ctx.LabelCounter}";
-        string endLabel = $"_endwhile_{_ctx.LabelCounter++}";
+        string startLabel = $"_while_{_generationContext.LabelCounter}";
+        string endLabel = $"_endwhile_{_generationContext.LabelCounter++}";
 
-        _ctx.EmitLine($"{startLabel}:");
-        _expressions.Emit(whl.Condition);
-        _ctx.Emit("pop eax");
-        _ctx.Emit("test eax, eax");
-        _ctx.Emit($"jz {endLabel}");
+        _generationContext.EmitLine($"{startLabel}:");
+        _expressionEmitter.Emit(whileStatement.Condition);
+        _generationContext.Emit("pop eax");
+        _generationContext.Emit("test eax, eax");
+        _generationContext.Emit($"jz {endLabel}");
 
-        foreach (StatementNode s in whl.Body)
-        {
-            Emit(s);
-        }
-
-        _ctx.Emit($"jmp {startLabel}");
-        _ctx.EmitLine($"{endLabel}:");
+        EmitStatements(whileStatement.Body);
+        _generationContext.Emit($"jmp {startLabel}");
+        _generationContext.EmitLine($"{endLabel}:");
     }
 
-    private void EmitVariableDeclaration(VariableDeclarationNode varDecl)
+    private void EmitVariableDeclaration(VariableDeclarationNode variableDeclaration)
     {
-        // Emit initializer
-        if (varDecl.Initializer != null)
+        if (variableDeclaration.Initializer != null)
         {
-            _expressions.Emit(varDecl.Initializer);
+            _expressionEmitter.Emit(variableDeclaration.Initializer);
         }
         else
         {
-            // Default zero-initialize
-            _ctx.Emit("xor eax, eax");
-            _ctx.Emit("push eax");
+            _generationContext.Emit("xor eax, eax");
+            _generationContext.Emit("push eax");
         }
 
-        // Allocate stack offset
-        int offset = _ctx.NextLocalOffset;
-        _ctx.LocalOffsets[varDecl.Name.Value] = offset;
-        _ctx.NextLocalOffset += 4;
+        int offset = _generationContext.NextLocalOffset;
+        _generationContext.LocalOffsets[variableDeclaration.Name.Value] = offset;
+        _generationContext.NextLocalOffset += 4;
 
-        // Store value into local variable slot
-        _ctx.Emit("pop eax");
-        _ctx.Emit($"mov [ebp-{offset}], eax");
+        _generationContext.Emit("pop eax");
+        _generationContext.Emit($"mov [ebp-{offset}], eax");
     }
 }

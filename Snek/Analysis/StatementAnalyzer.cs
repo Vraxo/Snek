@@ -23,7 +23,7 @@ public class StatementAnalyzer
         _expressionAnalyzer.Initialize(context);
     }
 
-    public void AnalyzeStatement(StatementNode stmt, string? expectedReturnType)
+    public void AnalyzeStatement(StatementNode stmt, TypeKind? expectedReturnType)
     {
         switch (stmt)
         {
@@ -50,31 +50,30 @@ public class StatementAnalyzer
 
     private void AnalyzeFunction(FunctionDefNode func)
     {
-        // Push new scope for function
         _scopeManager.PushScope();
         try
         {
-            // Register parameters in function scope
             foreach (ParameterNode param in func.Parameters)
             {
-                string paramType = param.TypeAnnotation?.Name.Value ?? "Any";
+                TypeKind paramType = param.TypeAnnotation != null
+                    ? TypeKindExtensions.FromString(param.TypeAnnotation.Name.Value)
+                    : TypeKind.Any;
                 _scopeManager.AddSymbol(param.Name.Value, new SymbolInfo(paramType, param.Name.Line, param.Name.Column));
             }
 
-            // Analyze body
-            string? returnType = func.ReturnType?.Name.Value;
+            TypeKind? returnType = func.ReturnType != null
+                ? TypeKindExtensions.FromString(func.ReturnType.Name.Value)
+                : null;
             bool hasReturn = false;
 
             foreach (StatementNode bodyStmt in func.Body)
             {
                 AnalyzeStatement(bodyStmt, returnType);
                 if (bodyStmt is ReturnStatementNode)
-                {
                     hasReturn = true;
-                }
             }
 
-            if (returnType != null && !hasReturn && returnType != "Any")
+            if (returnType.HasValue && returnType != TypeKind.NoneType && !hasReturn && returnType != TypeKind.Any)
             {
                 _context.Diagnostics.Add(new Diagnostic(
                     _context.SourceName,
@@ -90,7 +89,7 @@ public class StatementAnalyzer
 
     private void AnalyzeVariableDeclaration(VariableDeclarationNode varDecl)
     {
-        string varType = varDecl.Type.Name.Value;
+        TypeKind varType = TypeKindExtensions.FromString(varDecl.Type.Name.Value);
 
         if (_scopeManager.IsSymbolDefinedInCurrentScope(varDecl.Name.Value))
         {
@@ -103,12 +102,12 @@ public class StatementAnalyzer
 
         if (varDecl.Initializer != null)
         {
-            string? initType = _expressionAnalyzer.AnalyzeExpression(varDecl.Initializer);
-            if (initType != null && initType != varType && varType != "Any")
+            TypeKind? initType = _expressionAnalyzer.AnalyzeExpression(varDecl.Initializer);
+            if (initType != null && initType != varType && varType != TypeKind.Any)
             {
                 _context.Diagnostics.Add(new Diagnostic(
                     _context.SourceName,
-                    $"Type mismatch: cannot assign '{initType}' to variable of type '{varType}'",
+                    $"Type mismatch: cannot assign '{initType.Value.ToTypeString()}' to variable of type '{varType.ToTypeString()}'",
                     varDecl.Name.Line, varDecl.Name.Column, DiagnosticSeverity.Error));
             }
         }
@@ -116,7 +115,6 @@ public class StatementAnalyzer
         var symbolInfo = new SymbolInfo(varType, varDecl.Name.Line, varDecl.Name.Column);
         _scopeManager.AddSymbol(varDecl.Name.Value, symbolInfo);
         
-        // If this is a top-level variable (global scope), also add to globals
         if (_scopeManager.IsGlobalScope)
         {
             _scopeManager.AddGlobalSymbol(varDecl.Name.Value, symbolInfo);
@@ -125,28 +123,24 @@ public class StatementAnalyzer
 
     private void AnalyzeIf(IfStatementNode ifs)
     {
-        string? condType = _expressionAnalyzer.AnalyzeExpression(ifs.Condition);
+        TypeKind? condType = _expressionAnalyzer.AnalyzeExpression(ifs.Condition);
 
-        if (condType is not "bool" and not null)
+        if (condType != TypeKind.Bool && condType != null)
         {
             int conditionLine = ifs.Condition is IdentifierExpressionNode idExpr ? idExpr.Name.Line : -1;
-
             _context.Diagnostics.Add(new Diagnostic(
                 _context.SourceName,
-                $"Condition must be bool, got '{condType}'",
+                $"Condition must be bool, got '{condType.Value.ToTypeString()}'",
                 conditionLine,
                 -1,
                 DiagnosticSeverity.Error));
         }
 
-        // Then body scope
         _scopeManager.PushScope();
         try
         {
             foreach (StatementNode stmt in ifs.ThenBody)
-            {
                 AnalyzeStatement(stmt, null);
-            }
         }
         finally
         {
@@ -154,18 +148,13 @@ public class StatementAnalyzer
         }
 
         if (ifs.ElseBody == null)
-        {
             return;
-        }
 
-        // Else body scope
         _scopeManager.PushScope();
         try
         {
             foreach (StatementNode stmt in ifs.ElseBody)
-            {
                 AnalyzeStatement(stmt, null);
-            }
         }
         finally
         {
@@ -175,54 +164,46 @@ public class StatementAnalyzer
 
     private void AnalyzeWhile(WhileStatementNode whl)
     {
-        string? condType = _expressionAnalyzer.AnalyzeExpression(whl.Condition);
+        TypeKind? condType = _expressionAnalyzer.AnalyzeExpression(whl.Condition);
 
-        if (condType is not "bool" and not null)
+        if (condType != TypeKind.Bool && condType != null)
         {
-            _context.Diagnostics.Add(new(
+            _context.Diagnostics.Add(new Diagnostic(
                 _context.SourceName,
-                $"While condition must be bool, got '{condType}'",
+                $"While condition must be bool, got '{condType.Value.ToTypeString()}'",
                 -1,
                 -1,
                 DiagnosticSeverity.Error));
         }
 
         foreach (StatementNode stmt in whl.Body)
-        {
             AnalyzeStatement(stmt, null);
-        }
     }
 
-    private void AnalyzeReturn(ReturnStatementNode ret, string? expectedReturnType)
+    private void AnalyzeReturn(ReturnStatementNode ret, TypeKind? expectedReturnType)
     {
         if (ret.Value == null)
         {
-            if (expectedReturnType is not null and not "Any")
+            if (expectedReturnType.HasValue && expectedReturnType != TypeKind.NoneType && expectedReturnType != TypeKind.Any)
             {
                 _context.Diagnostics.Add(new Diagnostic(
                     _context.SourceName,
-                    $"Non-void function must return a value",
+                    "Non-void function must return a value",
                     -1,
                     -1,
                     DiagnosticSeverity.Error));
             }
-
             return;
         }
 
-        string? actualType = _expressionAnalyzer.AnalyzeExpression(ret.Value);
+        TypeKind? actualType = _expressionAnalyzer.AnalyzeExpression(ret.Value);
 
-        if (expectedReturnType == null
-            || actualType == null
-            || actualType == expectedReturnType
-            || expectedReturnType == "Any")
-        {
+        if (expectedReturnType == null || actualType == null || actualType == expectedReturnType || expectedReturnType == TypeKind.Any)
             return;
-        }
 
-        _context.Diagnostics.Add(new(
+        _context.Diagnostics.Add(new Diagnostic(
             _context.SourceName,
-            $"Return type mismatch: expected '{expectedReturnType}', got '{actualType}'",
+            $"Return type mismatch: expected '{expectedReturnType.Value.ToTypeString()}', got '{actualType.Value.ToTypeString()}'",
             -1,
             -1,
             DiagnosticSeverity.Error));

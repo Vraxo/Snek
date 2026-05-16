@@ -3,41 +3,43 @@ using System.Runtime.InteropServices;
 
 namespace Snek.Compiler;
 
-public class Assembler
+public sealed class Assembler
 {
-    private static string? FindExecutableInPath(string executableName)
+    private static string? LocateExecutable(string executableName)
     {
-        // Get PATH environment variable
         string? pathEnv = Environment.GetEnvironmentVariable("PATH");
-        if (string.IsNullOrEmpty(pathEnv))
-            return null;
 
-        // Split PATH into directories (platform-specific path separator)
+        if (string.IsNullOrEmpty(pathEnv))
+        {
+            return null;
+        }
+
         char separator = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? ';' : ':';
         string[] directories = pathEnv.Split(separator, StringSplitOptions.RemoveEmptyEntries);
 
-        // On Windows, if executable doesn't have extension, try .exe, .com, .bat, etc.
-        // But we already have fasm.exe or fasm, so just check existence.
-        foreach (string dir in directories)
+        foreach (string directory in directories)
         {
-            string fullPath = Path.Combine(dir, executableName);
-            if (File.Exists(fullPath))
+            string fullPath = Path.Combine(directory, executableName);
+
+            if (!File.Exists(fullPath))
             {
-                return fullPath;
+                continue;
             }
+
+            return fullPath;
         }
+
         return null;
     }
 
     public static bool Assemble(string asmPath, string outputDir)
     {
-        // Try to locate fasm executable in the system PATH
-        string fasmExe = OperatingSystem.IsWindows() ? "fasm.exe" : "fasm";
-        string? fasmPath = FindExecutableInPath(fasmExe);
+        string fasmExecutableName = OperatingSystem.IsWindows() ? "fasm.exe" : "fasm";
+        string? fasmPath = LocateExecutable(fasmExecutableName);
 
         if (fasmPath == null)
         {
-            Console.Error.WriteLine($"Error: FASM executable '{fasmExe}' not found in PATH.");
+            Console.Error.WriteLine($"Error: FASM executable '{fasmExecutableName}' not found in PATH.");
             Console.Error.WriteLine("Please install Flat Assembler (FASM) from https://flatassembler.net/");
             Console.Error.WriteLine("Ensure the directory containing 'fasm' is added to your PATH environment variable.");
             return false;
@@ -47,23 +49,8 @@ public class Assembler
         {
             Console.WriteLine("Executing FASM assembler...");
 
-            ProcessStartInfo startInfo = new()
-            {
-                FileName = fasmPath,
-                Arguments = $"\"{Path.GetFileName(asmPath)}\"",
-                WorkingDirectory = outputDir,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-
-            // Set FASM INCLUDE path if it exists alongside fasm.exe
-            string fasmInclude = Path.Combine(Path.GetDirectoryName(fasmPath) ?? "", "INCLUDE");
-            if (Directory.Exists(fasmInclude))
-            {
-                startInfo.EnvironmentVariables["INCLUDE"] = fasmInclude;
-            }
+            ProcessStartInfo startInfo = CreateProcessStartInfo(fasmPath, asmPath, outputDir);
+            SetIncludeEnvironmentVariable(startInfo, fasmPath);
 
             using Process? process = Process.Start(startInfo);
             if (process == null)
@@ -74,18 +61,9 @@ public class Assembler
 
             string output = process.StandardOutput.ReadToEnd();
             string errors = process.StandardError.ReadToEnd();
-
             process.WaitForExit();
 
-            if (!string.IsNullOrWhiteSpace(output))
-            {
-                Console.Write(output);
-            }
-
-            if (!string.IsNullOrWhiteSpace(errors))
-            {
-                Console.Error.Write(errors);
-            }
+            PrintOutput(output, errors);
 
             if (process.ExitCode == 0)
             {
@@ -102,6 +80,50 @@ public class Assembler
         {
             Console.Error.WriteLine($"Error executing FASM: {ex.Message}");
             return false;
+        }
+    }
+
+    private static ProcessStartInfo CreateProcessStartInfo(string fasmPath, string asmPath, string outputDir)
+    {
+        return new()
+        {
+            FileName = fasmPath,
+            Arguments = $"\"{Path.GetFileName(asmPath)}\"",
+            WorkingDirectory = outputDir,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+    }
+
+    private static void SetIncludeEnvironmentVariable(ProcessStartInfo startInfo, string fasmPath)
+    {
+        string? fasmDirectory = Path.GetDirectoryName(fasmPath);
+
+        if (fasmDirectory == null)
+        {
+            return;
+        }
+
+        string includePath = Path.Combine(fasmDirectory, "INCLUDE");
+
+        if (Directory.Exists(includePath))
+        {
+            startInfo.EnvironmentVariables["INCLUDE"] = includePath;
+        }
+    }
+
+    private static void PrintOutput(string output, string errors)
+    {
+        if (!string.IsNullOrWhiteSpace(output))
+        {
+            Console.Write(output);
+        }
+
+        if (!string.IsNullOrWhiteSpace(errors))
+        {
+            Console.Error.Write(errors);
         }
     }
 }

@@ -19,11 +19,11 @@ public class CallValidator
         _context = context;
     }
 
-    public string? ValidateAndGetReturnType(CallExpressionNode call)
+    public TypeKind? ValidateAndGetReturnType(CallExpressionNode call)
     {
         string? calleeName = ExtractCalleeName(call);
         if (calleeName == null)
-            return "Any";
+            return TypeKind.Any;
 
         if (BuiltinFunctionProvider.IsBuiltin(calleeName))
             return BuiltinFunctionProvider.GetReturnType(calleeName);
