@@ -85,4 +85,19 @@ public class GenerationContext
     {
         Output.AppendLine(text);
     }
+
+    public string EnsureFormatString(string format)
+    {
+        foreach (KeyValuePair<string, string> kvp in StringLiterals)
+        {
+            if (kvp.Value == format)
+            {
+                return kvp.Key;
+            }
+        }
+
+        string label = $"fmt{StringCounter++}";
+        StringLiterals[label] = format;
+        return label;
+    }
 }

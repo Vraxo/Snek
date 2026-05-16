@@ -6,10 +6,12 @@ namespace Snek.Generation;
 public class ExpressionEmitter
 {
     private readonly GenerationContext _generationContext;
+    private readonly BuiltinFunctionEmitter _builtinEmitter;
 
     public ExpressionEmitter(GenerationContext generationContext)
     {
         _generationContext = generationContext;
+        _builtinEmitter = new BuiltinFunctionEmitter(generationContext, this);
     }
 
     public void Emit(ExpressionNode expression)
@@ -78,18 +80,12 @@ public class ExpressionEmitter
 
     private void EmitFunctionCall(CallExpressionNode call)
     {
-        string calleeName = ExtractCalleeName(call);
-        if (calleeName == "print")
+        if (_builtinEmitter.TryEmitBuiltin(call))
         {
-            EmitPrintCall(call);
-            return;
-        }
-        if (calleeName == "pause")
-        {
-            EmitPauseCall();
             return;
         }
 
+        string calleeName = ExtractCalleeName(call);
         string callTarget = DetermineCallTarget(calleeName);
 
         EmitArgumentsRightToLeft(call);
@@ -115,11 +111,6 @@ public class ExpressionEmitter
         return _generationContext.MangleName(calleeName);
     }
 
-    private void EmitPauseCall()
-    {
-        _generationContext.Emit("call [_getch]");
-    }
-
     private void EmitArgumentsRightToLeft(CallExpressionNode call)
     {
         for (int i = call.Arguments.Count - 1; i >= 0; i--)
@@ -130,76 +121,12 @@ public class ExpressionEmitter
 
     private void CleanupStackAfterCall(int argumentCount)
     {
-        if (argumentCount > 0)
+        if (argumentCount <= 0)
         {
-            _generationContext.Emit($"add esp, {argumentCount * 4}");
-        }
-    }
-
-    private void EmitPrintCall(CallExpressionNode call)
-    {
-        if (call.Arguments.Count == 0)
-        {
-            EmitPlainNewline();
             return;
         }
 
-        ExpressionNode firstArgument = call.Arguments[0];
-        if (IsStringLiteral(firstArgument))
-        {
-            EmitStringLiteralPrint(firstArgument);
-        }
-        else
-        {
-            EmitFormattedPrint(firstArgument);
-        }
-        _generationContext.Emit("push eax");
-    }
-
-    private void EmitPlainNewline()
-    {
-        string formatLabel = EnsureFormatString("\n");
-        _generationContext.Emit($"push {formatLabel}");
-        _generationContext.Emit("call [printf]");
-        _generationContext.Emit("add esp, 4");
-        _generationContext.Emit("push eax");
-    }
-
-    private void EmitStringLiteralPrint(ExpressionNode stringExpression)
-    {
-        Emit(stringExpression);
-        _generationContext.Emit("call [printf]");
-        _generationContext.Emit("add esp, 4");
-    }
-
-    private void EmitFormattedPrint(ExpressionNode valueExpression)
-    {
-        string formatLabel = EnsureFormatString("%d\n");
-        Emit(valueExpression);
-        _generationContext.Emit($"push {formatLabel}");
-        _generationContext.Emit("call [printf]");
-        _generationContext.Emit("add esp, 8");
-    }
-
-    private string EnsureFormatString(string format)
-    {
-        foreach (KeyValuePair<string, string> kvp in _generationContext.StringLiterals)
-        {
-            if (kvp.Value == format)
-            {
-                return kvp.Key;
-            }
-        }
-
-        string label = $"fmt{_generationContext.StringCounter++}";
-        _generationContext.StringLiterals[label] = format;
-        return label;
-    }
-
-    private static bool IsStringLiteral(ExpressionNode expression)
-    {
-        return expression is LiteralExpressionNode literal
-            && literal.Value.Type == TokenType.StringLiteral;
+        _generationContext.Emit($"add esp, {argumentCount * 4}");
     }
 
     private void EmitBinaryOperation(BinaryExpressionNode binary)

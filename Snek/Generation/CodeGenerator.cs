@@ -51,10 +51,12 @@ public class CodeGenerator : ICodeGenerator
     {
         foreach (StatementNode statement in program.Statements)
         {
-            if (statement is FunctionDefNode function)
+            if (statement is not FunctionDefNode function)
             {
-                _statementEmitter.EmitFunction(function);
+                continue;
             }
+
+            _statementEmitter.EmitFunction(function);
         }
     }
 
