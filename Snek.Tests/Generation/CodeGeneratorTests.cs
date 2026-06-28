@@ -1,10 +1,10 @@
 using FluentAssertions;
-using Snek.Analysis;
-using Snek.Ast;
-using Snek.Generation;
-using Snek.Lexing;
-using Snek.Parsing;
-using Snek.Pipeline;
+using Snek.Core.Analysis;
+using Snek.Core.Ast;
+using Snek.Core.Generation;
+using Snek.Core.Lexing;
+using Snek.Core.Parsing;
+using Snek.Core.Pipeline;
 
 namespace Snek.Tests.Generation;
 

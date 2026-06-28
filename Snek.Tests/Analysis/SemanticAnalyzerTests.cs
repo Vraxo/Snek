@@ -1,9 +1,8 @@
 using FluentAssertions;
-using Snek.Analysis;
-using Snek.Ast;
-using Snek.Lexing;
-using Snek.Parsing;
-using Snek.Pipeline;
+using Snek.Core.Analysis;
+using Snek.Core.Lexing;
+using Snek.Core.Parsing;
+using Snek.Core.Pipeline;
 
 namespace Snek.Tests.Analysis;
 
@@ -129,9 +128,9 @@ public class SemanticAnalyzerTests
         AnalyzeSource(source);
 
         // Resolve the type of a call to foo(), which should be i32
-        var callExpr = new CallExpressionNode(
+        CallExpressionNode callExpr = new(
             new IdentifierExpressionNode(new(TokenType.Identifier, "foo", 1, 1)),
-            new List<ExpressionNode>());
+            []);
 
         TypeKind? type = _analyzer.ResolveType(callExpr, _context);
 

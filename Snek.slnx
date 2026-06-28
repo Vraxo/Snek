@@ -1,4 +1,5 @@
 <Solution>
+  <Project Path="Snek.Core/Snek.Core.csproj" Id="b118553a-667d-4b31-8a23-c16fa1dc6846" />
   <Project Path="Snek.Tests/Snek.Tests.csproj" Id="dd99cf15-8f3f-4862-9755-ca79718f0201" />
   <Project Path="Snek/Snek.csproj" />
 </Solution>

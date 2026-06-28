@@ -1,5 +1,5 @@
-﻿using Snek.Ast;
-using Snek.Lexing;
+﻿using Snek.Core.Ast;
+using Snek.Core.Lexing;
 
 namespace Snek.Tests;
 
