@@ -262,4 +262,18 @@ public sealed class CodeGeneratorTests
         output.Should().Contain("cdq");
         output.Should().Contain("idiv ebx");
     }
+
+    [Fact]
+    public void Generate_ListProperty_EmitsLengthHeaderAndLookup()
+    {
+        string source = """
+            arr: List<i32> = [10, 20];
+            len: i32 = arr.length;
+            """;
+
+        string output = GenerateSource(source);
+
+        output.Should().Contain("mov dword [eax], 2"); // Alloc header store length
+        output.Should().Contain("mov eax, [eax]");     // Property load header lookup
+    }
 }

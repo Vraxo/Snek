@@ -34,6 +34,18 @@ public class ExpressionEmitter
                 EmitBinaryOperation(binary);
                 break;
 
+            case ListExpressionNode list:
+                EmitListExpression(list);
+                break;
+
+            case IndexExpressionNode index:
+                EmitIndexExpression(index);
+                break;
+
+            case MemberAccessExpressionNode member:
+                EmitMemberAccess(member);
+                break;
+
             default:
                 _generationContext.Emit("; unsupported expression");
                 break;
@@ -205,5 +217,59 @@ public class ExpressionEmitter
         }
 
         _generationContext.Emit("push eax");
+    }
+
+    private void EmitListExpression(ListExpressionNode list)
+    {
+        int elementCount = list.Elements.Count;
+        int byteSize = (elementCount + 1) * 4;
+
+        _generationContext.Emit($"; allocate {byteSize} bytes for array of {elementCount} elements + length header");
+        _generationContext.Emit($"push {byteSize}");
+        _generationContext.Emit("call [malloc]");
+        _generationContext.Emit("add esp, 4");
+
+        // Store the length header at offset 0
+        _generationContext.Emit($"mov dword [eax], {elementCount}");
+
+        // Save the base address onto the stack
+        _generationContext.Emit("push eax");
+
+        for (int i = 0; i < elementCount; i++)
+        {
+            Emit(list.Elements[i]);
+            _generationContext.Emit("pop ebx"); // ebx gets element value
+            _generationContext.Emit("mov eax, [esp]"); // eax gets saved array base address from top of stack
+            _generationContext.Emit($"mov [eax + {4 + i * 4}], ebx");
+        }
+
+        // Leave the final base address on the stack as the expression result
+    }
+
+    private void EmitIndexExpression(IndexExpressionNode index)
+    {
+        Emit(index.Target); // evaluates base address and pushes it
+        Emit(index.Index);  // evaluates index and pushes it
+
+        _generationContext.Emit("pop ebx"); // ebx = index
+        _generationContext.Emit("pop eax"); // eax = base address
+        _generationContext.Emit("mov eax, [eax + ebx*4 + 4]");
+        _generationContext.Emit("push eax");
+    }
+
+    private void EmitMemberAccess(MemberAccessExpressionNode member)
+    {
+        if (member.Member.Value == "length")
+        {
+            Emit(member.Object); // evaluates the array object (pushes base address)
+            _generationContext.Emit("pop eax"); // eax = base address
+            _generationContext.Emit("mov eax, [eax]"); // reads length header at offset 0
+            _generationContext.Emit("push eax");
+        }
+        else
+        {
+            _generationContext.Emit("; unsupported property access");
+            _generationContext.Emit("push 0");
+        }
     }
 }

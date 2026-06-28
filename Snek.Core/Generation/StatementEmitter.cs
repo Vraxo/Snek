@@ -16,7 +16,7 @@ public class StatementEmitter
     public void EmitEntryPoint(IReadOnlyList<StatementNode> statements)
     {
         List<StatementNode> topLevelStatements = statements
-            .Where(statement => statement is not FunctionDefNode)
+            .Where(statement => statement is not FunctionDefNode and not ExternFunctionDefNode)
             .ToList();
 
         _generationContext.EmitLine("_start:");
@@ -33,23 +33,6 @@ public class StatementEmitter
         ReserveLocalVariablesSpace(topLevelStatements);
         EmitStatements(topLevelStatements);
         EmitFunctionEpilogueWithZeroReturn();
-    }
-
-    public void EmitFunction(FunctionDefNode function)
-    {
-        string mangledName = _generationContext.MangleName(function.Name.Value);
-        _generationContext.EmitLine($"{mangledName}:");
-        BeginFunctionPrologue();
-
-        EmitParameterComments(function.Parameters);
-        EmitStatements(function.Body);
-
-        if (function.ReturnType == null)
-        {
-            _generationContext.Emit("xor eax, eax");
-        }
-
-        EmitFunctionEpilogue();
     }
 
     public void Emit(StatementNode statement)
@@ -78,6 +61,23 @@ public class StatementEmitter
                 _generationContext.Emit("; unsupported statement");
                 break;
         }
+    }
+
+    public void EmitFunction(FunctionDefNode function)
+    {
+        string mangledName = _generationContext.MangleName(function.Name.Value);
+        _generationContext.EmitLine($"{mangledName}:");
+        BeginFunctionPrologue();
+
+        EmitParameterComments(function.Parameters);
+        EmitStatements(function.Body);
+
+        if (function.ReturnType == null)
+        {
+            _generationContext.Emit("xor eax, eax");
+        }
+
+        EmitFunctionEpilogue();
     }
 
     private void BeginFunctionPrologue()

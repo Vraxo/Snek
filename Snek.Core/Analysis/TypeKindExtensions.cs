@@ -29,6 +29,7 @@ public static class TypeKindExtensions
             TypeKind.Char => "char",
             TypeKind.NoneType => "NoneType",
             TypeKind.Any => "Any",
+            TypeKind.List => "List",
             _ => "Unknown"
         };
     }
@@ -44,6 +45,7 @@ public static class TypeKindExtensions
             "char" => TypeKind.Char,
             "NoneType" => TypeKind.NoneType,
             "Any" => TypeKind.Any,
+            "List" => TypeKind.List,
             _ => TypeKind.Unknown
         };
     }

@@ -36,6 +36,7 @@ public class LexerRules
         Keywords["and"] = TokenType.KeywordAnd;
         Keywords["or"] = TokenType.KeywordOr;
         Keywords["not"] = TokenType.KeywordNot;
+        Keywords["extern"] = TokenType.KeywordExtern;
 
         // Default operators (longest first to avoid prefix conflicts)
         Operators.Add(("**=", TokenType.DoubleStarAssign));
@@ -59,6 +60,7 @@ public class LexerRules
         Operators.Add(("//", TokenType.DoubleSlash));
         Operators.Add(("<<", TokenType.LeftShift));
         Operators.Add((">>", TokenType.RightShift));
+        Keywords["def"] = TokenType.KeywordDef;
         Operators.Add(("+", TokenType.Plus));
         Operators.Add(("-", TokenType.Minus));
         Operators.Add(("*", TokenType.Star));

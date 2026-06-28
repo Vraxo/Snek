@@ -29,6 +29,10 @@ public class StringCollector
         {
             CollectExternalCall(call);
         }
+        else if (node is ListExpressionNode)
+        {
+            _ctx.ExternalFunctions.Add("malloc");
+        }
     }
 
     private void CollectStringLiteral(LiteralExpressionNode lit)

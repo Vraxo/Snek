@@ -31,6 +31,9 @@ public class ExpressionTypeResolver
             CallExpressionNode call => _callValidator.ValidateAndGetReturnType(call),
             BinaryExpressionNode bin => ResolveBinary(bin),
             UnaryExpressionNode unary => Resolve(unary.Operand),
+            ListExpressionNode => TypeKind.List,
+            IndexExpressionNode => TypeKind.Any,
+            MemberAccessExpressionNode member => ResolveMemberAccess(member),
             _ => TypeKind.Any
         };
     }
@@ -64,5 +67,14 @@ public class ExpressionTypeResolver
         TypeKind? left = Resolve(bin.Left);
         TypeKind? right = Resolve(bin.Right);
         return BinaryOperatorTypeResolver.Resolve(left, right, bin.Operator.Type);
+    }
+
+    private TypeKind ResolveMemberAccess(MemberAccessExpressionNode member)
+    {
+        if (member.Member.Value == "length")
+        {
+            return TypeKind.I32;
+        }
+        return TypeKind.Any;
     }
 }

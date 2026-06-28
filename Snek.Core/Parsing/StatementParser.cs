@@ -35,6 +35,11 @@ public class StatementParser
 
     private StatementNode? ParseStatement()
     {
+        if (_stream.Match(TokenType.KeywordExtern))
+        {
+            return ParseExternFunctionDef();
+        }
+
         if (_stream.Match(TokenType.KeywordFn) || _stream.Match(TokenType.KeywordDef))
         {
             return ParseFunctionDef();
@@ -127,6 +132,24 @@ public class StatementParser
         List<StatementNode> body = ParseBlock();
 
         return new(name, parameters, returnType, body);
+    }
+
+    private ExternFunctionDefNode ParseExternFunctionDef()
+    {
+        _stream.Consume(TokenType.KeywordFn);
+        Token name = _stream.Consume(TokenType.Identifier);
+        _stream.Consume(TokenType.LeftParen);
+        List<ParameterNode> parameters = ParseParameters();
+
+        TypeNode? returnType = null;
+
+        if (_stream.Match(TokenType.Arrow))
+        {
+            returnType = ParseTypeAnnotation();
+        }
+
+        _stream.Consume(TokenType.Semicolon);
+        return new ExternFunctionDefNode(name, parameters, returnType);
     }
 
     private VariableDeclarationNode ParseVariableDeclaration()

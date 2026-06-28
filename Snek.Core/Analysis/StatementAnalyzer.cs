@@ -29,6 +29,9 @@ public class StatementAnalyzer
             case FunctionDefNode func:
                 AnalyzeFunction(func);
                 break;
+            case ExternFunctionDefNode:
+                // Extern functions don't have block-bodies, nothing to analyze.
+                break;
             case ExpressionStatementNode expr:
                 _expressionAnalyzer.AnalyzeExpression(expr.Expression);
                 break;
@@ -213,7 +216,6 @@ public class StatementAnalyzer
         foreach (StatementNode stmt in whl.Body)
         {
             AnalyzeStatement(stmt, null);
-            _ = stmt;
         }
     }
 

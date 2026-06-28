@@ -167,4 +167,16 @@ public class SemanticAnalyzerTests
 
         _context.Diagnostics.Should().NotContain(d => d.IsError);
     }
+
+    [Fact]
+    public void Analyze_ListVariable_TypeChecksSuccessfully()
+    {
+        string source = """
+            arr: List<i32> = [10, 20, 30];
+            """;
+
+        AnalyzeSource(source);
+
+        _context.Diagnostics.Should().NotContain(d => d.IsError);
+    }
 }

@@ -173,4 +173,19 @@ public class ParserTests
         binary.Left.Should().BeOfType<IdentifierExpressionNode>();
         ((IdentifierExpressionNode)binary.Left).Name.Value.Should().Be("x");
     }
+
+    [Fact]
+    public void Parse_ExternFunction_CreatesExternFunctionDefNode()
+    {
+        string source = "extern fn system(cmd: str) -> i32;";
+        AstNode ast = ParseSource(source);
+
+        ast.Should().BeOfType<ProgramNode>();
+        ProgramNode program = (ProgramNode)ast;
+        ExternFunctionDefNode extFunc = program.Statements.OfType<ExternFunctionDefNode>().Should().ContainSingle().Subject;
+        extFunc.Name.Value.Should().Be("system");
+        extFunc.Parameters.Should().ContainSingle();
+        extFunc.Parameters[0].Name.Value.Should().Be("cmd");
+        extFunc.ReturnType?.Name.Value.Should().Be("str");
+    }
 }

@@ -11,5 +11,5 @@ public enum TypeKind
     Char,       // character
     NoneType,   // None value
     Function,   // Represents a function (metadata contains FunctionType)
-    // TODO: add List, Dict, etc. as needed
+    List,       // Represents a dynamic list / array
 }

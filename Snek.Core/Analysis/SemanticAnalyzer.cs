@@ -47,12 +47,14 @@ public class SemanticAnalyzer : ISemanticAnalyzer
     {
         foreach (StatementNode statement in program.Statements)
         {
-            if (statement is not FunctionDefNode func)
+            if (statement is FunctionDefNode func)
             {
-                continue;
+                RegisterGlobalFunction(func);
             }
-
-            RegisterGlobalFunction(func);
+            else if (statement is ExternFunctionDefNode extFunc)
+            {
+                RegisterExternFunction(extFunc);
+            }
         }
     }
 
@@ -70,6 +72,22 @@ public class SemanticAnalyzer : ISemanticAnalyzer
         _scopeManager.AddGlobalSymbol(
             func.Name.Value,
             new(TypeKind.Function, func.Name.Line, func.Name.Column, funcType));
+    }
+
+    private void RegisterExternFunction(ExternFunctionDefNode extFunc)
+    {
+        TypeKind? returnType = extFunc.ReturnType != null
+            ? TypeKindExtensions.FromString(extFunc.ReturnType.Name.Value)
+            : null;
+
+        FunctionType funcType = new(
+            extFunc.Name.Value,
+            extFunc.Parameters,
+            returnType);
+
+        _scopeManager.AddGlobalSymbol(
+            extFunc.Name.Value,
+            new(TypeKind.Function, extFunc.Name.Line, extFunc.Name.Column, funcType));
     }
 
     private void AnalyzeAllStatements(ProgramNode program)
