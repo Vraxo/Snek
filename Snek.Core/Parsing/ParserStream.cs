@@ -1,3 +1,4 @@
+using Snek.Core.Diagnoistics;
 using Snek.Core.Lexing;
 using Snek.Core.Pipeline;
 

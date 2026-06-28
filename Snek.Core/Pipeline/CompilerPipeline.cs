@@ -1,4 +1,5 @@
 using Snek.Core.Analysis;
+using Snek.Core.Ast;
 using Snek.Core.Diagnoistics;
 using Snek.Core.Generation;
 using Snek.Core.Lexing;

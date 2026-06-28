@@ -6,8 +6,6 @@ public class LexerRules
     public List<(string Pattern, TokenType Type)> Operators { get; } = [];
     public char StringDelimiter { get; set; } = '"';
     public char CharDelimiter { get; set; } = '\'';
-    public bool SupportsIndentation { get; set; } = true;
-    public int TabWidth { get; set; } = 2;
     public bool AllowTrailingCommas { get; set; } = true;
     public HashSet<char> IdentifierStartChars { get; } = ['_'];
     public HashSet<char> IdentifierContinueChars { get; } = [];
@@ -70,6 +68,7 @@ public class LexerRules
         Operators.Add(("<", TokenType.LessThan));
         Operators.Add((">", TokenType.GreaterThan));
         Operators.Add((":", TokenType.Colon));
+        Operators.Add((";", TokenType.Semicolon));
         Operators.Add((",", TokenType.Comma));
         Operators.Add((".", TokenType.Dot));
         Operators.Add(("(", TokenType.LeftParen));

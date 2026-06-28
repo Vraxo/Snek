@@ -1,3 +1,6 @@
+using Snek.Core.Ast;
+using Snek.Core.Pipeline;
+
 namespace Snek.Core.Analysis;
 
 public class ExpressionAnalyzer

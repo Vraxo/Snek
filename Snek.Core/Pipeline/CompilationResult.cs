@@ -1,4 +1,6 @@
-﻿namespace Snek.Core.Pipeline;
+﻿using Snek.Core.Diagnoistics;
+
+namespace Snek.Core.Pipeline;
 
 public record CompilationResult(string? Output, IReadOnlyList<Diagnostic> Diagnostics)
 {

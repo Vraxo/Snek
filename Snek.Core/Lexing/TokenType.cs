@@ -5,9 +5,7 @@ public enum TokenType
     // Structural
     Unknown,
     Eof,
-    Newline,
-    Indent,
-    Dedent,
+    Semicolon,
 
     // Keywords
     KeywordFn,

@@ -1,4 +1,5 @@
-﻿using Snek.Core.Pipeline;
+﻿using Snek.Core.Diagnoistics;
+using Snek.Core.Pipeline;
 using System.Text;
 
 namespace Snek.Core.Lexing;
@@ -11,7 +12,6 @@ public class Lexer : ILexer
     private int _line = 1;
     private int _column = 1;
     private CompilationContext? _context;
-    private readonly Stack<int> _indentStack = new();
 
     public Lexer(LexerRules? rules = null)
     {
@@ -25,8 +25,6 @@ public class Lexer : ILexer
         _line = 1;
         _column = 1;
         _context = context;
-        _indentStack.Clear();
-        _indentStack.Push(0);
 
         List<Token> tokens = [];
 
@@ -70,13 +68,6 @@ public class Lexer : ILexer
             Advance();
         }
 
-        // Emit dedents to close all indentation levels
-        while (_indentStack.Count > 1)
-        {
-            _indentStack.Pop();
-            tokens.Add(new Token(TokenType.Dedent, "", _line, _column));
-        }
-
         tokens.Add(new Token(TokenType.Eof, "", _line, _column));
         return tokens;
     }
@@ -116,9 +107,10 @@ public class Lexer : ILexer
         {
             char c = Peek();
 
-            if (char.IsWhiteSpace(c) && c != '\n')
+            if (char.IsWhiteSpace(c))
             {
-                Advance(); continue;
+                Advance();
+                continue;
             }
 
             if (c == '#')
@@ -292,15 +284,8 @@ public class Lexer : ILexer
         int startLine = _line;
         int startColumn = _column;
 
-        if (c == '\n')
-        {
-            Advance();
-            HandleNewline(tokens, startLine, startColumn);
-            return true;
-        }
-
         // Single-char structural tokens not in operators list
-        if (c is '(' or ')' or '[' or ']' or '{' or '}' or ',' or '.' or ':')
+        if (c is '(' or ')' or '[' or ']' or '{' or '}' or ',' or '.' or ':' or ';')
         {
             Advance();
             TokenType type = c switch
@@ -314,6 +299,7 @@ public class Lexer : ILexer
                 ',' => TokenType.Comma,
                 '.' => TokenType.Dot,
                 ':' => TokenType.Colon,
+                ';' => TokenType.Semicolon,
                 _ => TokenType.Unknown
             };
             tokens.Add(new Token(type, c.ToString(), startLine, startColumn));
@@ -321,61 +307,6 @@ public class Lexer : ILexer
         }
 
         return false;
-    }
-
-    private void HandleNewline(List<Token> tokens, int line, int column)
-    {
-        if (!_rules.SupportsIndentation)
-        {
-            tokens.Add(new Token(TokenType.Newline, "", line, column));
-            return;
-        }
-
-        // Always emit Newline first, before any Indent/Dedent tokens.
-        // This ensures the parser sees "Statement -> Newline -> Indent -> Block".
-        tokens.Add(new Token(TokenType.Newline, "", line, column));
-
-        // Calculate indentation of next non-empty line
-        int indent = 0;
-        int tempPos = _position;
-        while (tempPos < _source.Length)
-        {
-            char c = _source[tempPos];
-            if (c == ' ') { indent++; tempPos++; }
-            else if (c == '\t') { indent += _rules.TabWidth; tempPos++; }
-            else if (c == '\n') { indent = 0; tempPos++; }
-            else if (c == '#')
-            {
-                while (tempPos < _source.Length && _source[tempPos] != '\n')
-                {
-                    tempPos++;
-                }
-            }
-            else
-            {
-                break;
-            }
-        }
-
-        int currentIndent = _indentStack.Peek();
-
-        if (indent > currentIndent)
-        {
-            _indentStack.Push(indent);
-            tokens.Add(new(TokenType.Indent, "", line, column));
-        }
-        else if (indent < currentIndent)
-        {
-            while (_indentStack.Count > 1 && _indentStack.Peek() > indent)
-            {
-                _indentStack.Pop();
-                tokens.Add(new(TokenType.Dedent, "", line, column));
-            }
-            if (_indentStack.Peek() != indent)
-            {
-                ReportError("Inconsistent indentation", line, column);
-            }
-        }
     }
 
     private bool MatchString(string expected)

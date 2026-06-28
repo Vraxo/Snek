@@ -72,24 +72,12 @@ public class LexerTests
     {
         List<Token> tokens = [.. _lexer.Tokenize("x # this is a comment\ny", _context)];
 
-        List<string> identifiers = [.. tokens.Where(t => t.Type == TokenType.Identifier)
+        List<string> identifiers = [.. tokens
+            .Where(t => t.Type == TokenType.Identifier)
             .Select(t => t.Value)];
 
         identifiers.Should().Contain("x").And.Contain("y");
         tokens.Select(t => t.Value).Should().NotContain("this is a comment");
-    }
-
-    [Fact]
-    public void Tokenize_WithIndentation_EmitsIndentDedentTokens()
-    {
-        string source = """
-            fn main():
-              x = 1
-            """;
-        List<Token> tokens = [.. _lexer.Tokenize(source, _context)];
-
-        tokens.Should().Contain(t => t.Type == TokenType.Indent);
-        tokens.Should().Contain(t => t.Type == TokenType.Dedent);
     }
 
     [Fact]

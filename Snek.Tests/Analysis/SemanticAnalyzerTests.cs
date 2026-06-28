@@ -1,5 +1,6 @@
 using FluentAssertions;
 using Snek.Core.Analysis;
+using Snek.Core.Ast;
 using Snek.Core.Lexing;
 using Snek.Core.Parsing;
 using Snek.Core.Pipeline;
@@ -30,9 +31,9 @@ public class SemanticAnalyzerTests
     public void Analyze_UndefinedIdentifier_ReportsError()
     {
         string source = """
-            fn test():
-              return undefinedVar
-
+            fn test() {
+              return undefinedVar;
+            }
             """;
         AnalyzeSource(source);
 
@@ -43,9 +44,9 @@ public class SemanticAnalyzerTests
     public void Analyze_TypeMismatch_ReturnsError()
     {
         string source = """
-            fn foo() -> i32:
-              return "wrong"
-
+            fn foo() -> i32 {
+              return "wrong";
+            }
             """;
         AnalyzeSource(source);
 
@@ -56,9 +57,9 @@ public class SemanticAnalyzerTests
     public void Analyze_NonVoidFunctionWithoutReturn_ReportsError()
     {
         string source = """
-            fn foo() -> i32:
-              pass
-
+            fn foo() -> i32 {
+              pass;
+            }
             """;
         AnalyzeSource(source);
 
@@ -70,10 +71,11 @@ public class SemanticAnalyzerTests
     public void Analyze_IfConditionNotBool_ReportsError()
     {
         string source = """
-            fn test():
-              if "string":
-                pass
-
+            fn test() {
+              if "string" {
+                pass;
+              }
+            }
             """;
         AnalyzeSource(source);
 
@@ -84,10 +86,11 @@ public class SemanticAnalyzerTests
     public void Analyze_WhileConditionNotBool_ReportsError()
     {
         string source = """
-            fn test():
-              while 42:
-                pass
-
+            fn test() {
+              while 42 {
+                pass;
+              }
+            }
             """;
         AnalyzeSource(source);
 
@@ -98,17 +101,16 @@ public class SemanticAnalyzerTests
     public void Analyze_FunctionCallWithWrongArity_ReportsError()
     {
         string source = """
-            fn foo(x: int):
-              pass
+            fn foo(x: int) {
+              pass;
+            }
 
-            fn test():
-              return foo()
-
+            fn test() {
+              return foo();
+            }
             """;
         AnalyzeSource(source);
 
-        // Since foo is called with wrong arity (0 args instead of 1)
-        // The error should mention arity mismatch
         _context.Diagnostics.Should().ContainSingle(d =>
             d.IsError && d.Message.Contains("expects 1 args, got 0"));
     }
@@ -117,17 +119,17 @@ public class SemanticAnalyzerTests
     public void Analyze_ValidFunctionCall_ResolvesReturnType()
     {
         string source = """
-            fn foo() -> i32:
-              return 42
+            fn foo() -> i32 {
+              return 42;
+            }
 
-            fn test() -> i32:
-              return foo()
-
+            fn test() -> i32 {
+              return foo();
+            }
             """;
 
         AnalyzeSource(source);
 
-        // Resolve the type of a call to foo(), which should be i32
         CallExpressionNode callExpr = new(
             new IdentifierExpressionNode(new(TokenType.Identifier, "foo", 1, 1)),
             []);
@@ -142,9 +144,9 @@ public class SemanticAnalyzerTests
     public void Analyze_BinaryExpression_PromotesTypes()
     {
         string source = """
-            fn test() -> f64:
-              return 1 + 2.5
-
+            fn test() -> f64 {
+              return 1 + 2.5;
+            }
             """;
 
         AnalyzeSource(source);
@@ -156,9 +158,9 @@ public class SemanticAnalyzerTests
     public void Analyze_ComparisonExpression_ReturnsBool()
     {
         string source = """
-            fn test() -> bool:
-              return 5 > 3
-
+            fn test() -> bool {
+              return 5 > 3;
+            }
             """;
 
         AnalyzeSource(source);

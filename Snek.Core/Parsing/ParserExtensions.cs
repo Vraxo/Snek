@@ -36,7 +36,7 @@ public static class ParserExtensions
         this IEnumerator<Token> tokens,
         params TokenType[] syncPoints)
     {
-        while (tokens.Current?.Type is not (TokenType.Eof or TokenType.Newline or TokenType.Dedent)
+        while (tokens.Current?.Type is not (TokenType.Eof or TokenType.Semicolon or TokenType.RightBrace)
                && !syncPoints.Contains(tokens.Current.Type))
         {
             tokens.MoveNext();

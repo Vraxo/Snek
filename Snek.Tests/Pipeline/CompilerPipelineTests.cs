@@ -13,7 +13,7 @@ public class CompilerPipelineTests
     public void Compile_ValidProgram_ReturnsSuccess()
     {
         CompilerPipeline pipeline = CreateDefaultPipeline();
-        string source = "pass\n";
+        string source = "pass;\n";
 
         CompilationResult result = pipeline.Compile(source, "test.snek");
 
@@ -51,9 +51,9 @@ public class CompilerPipelineTests
     {
         CompilerPipeline pipeline = CreateDefaultPipeline();
         string source = """
-            fn foo() -> int:
-              return "wrong"
-
+            fn foo() -> int {
+              return "wrong";
+            }
             """;
 
         CompilationResult result = pipeline.Compile(source, "test.snek");
@@ -67,7 +67,7 @@ public class CompilerPipelineTests
     {
         PipelineOptions options = new() { EnableLogging = true };
         CompilerPipeline pipeline = CreateDefaultPipeline(options);
-        string source = "pass\n";
+        string source = "pass;\n";
 
         CompilationResult result = pipeline.Compile(source, "test.snek");
 
@@ -79,7 +79,7 @@ public class CompilerPipelineTests
     public void Compile_AssemblyOutput_ContainsExpectedSections()
     {
         CompilerPipeline pipeline = CreateDefaultPipeline();
-        string source = "print(\"hello\")\n";
+        string source = "print(\"hello\");\n";
 
         CompilationResult result = pipeline.Compile(source, "test.snek");
 

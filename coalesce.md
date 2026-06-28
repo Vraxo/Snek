@@ -27,110 +27,12 @@ public class Class1
 
 ---
 
-### `Snek\Program.cs`
+### `Snek.Core\Analysis\BinaryOperatorTypeResolver.cs`
 
 ```csharp
-using Snek.Compiler;
-using System.CommandLine;
+using Snek.Core.Lexing;
 
-namespace Snek;
-
-public class Program
-{
-    public static async Task<int> Main(string[] args)
-    {
-        RootCommand rootCommand = new("Snek Compiler - compiles .snek files to executables");
-
-        Argument<string> inputArgument = new("input")
-        {
-            Description = "Path to the input .snek file"
-        };
-
-        rootCommand.AddArgument(inputArgument);
-
-        Option<string> outputOption = new(
-            "--output",
-            "Specify output file (default: output.asm or output.exe)");
-
-        outputOption.AddAlias("-o");
-        rootCommand.AddOption(outputOption);
-
-        Option<string> syntaxOption = new(
-            "--syntax",
-            () => "python",
-            "Use alternate syntax: python, cstyle (default: python)");
-
-        rootCommand.AddOption(syntaxOption);
-
-        Option<bool> verboseOption = new(
-            "--verbose",
-            "Enable detailed logging");
-
-        verboseOption.AddAlias("-v");
-        rootCommand.AddOption(verboseOption);
-
-        Option<bool> asmOnlyOption = new(
-            "--asm-only",
-            "Stop after generating assembly (do not assemble)");
-        rootCommand.AddOption(asmOnlyOption);
-
-        rootCommand.SetHandler(async (inputPath, outputPath, syntax, verbose, asmOnly) =>
-        {
-            await Task.Run(() =>
-            {
-                RootCommandHandler(inputPath, outputPath, syntax, verbose, asmOnly);
-            });
-        }, inputArgument, outputOption, syntaxOption, verboseOption, asmOnlyOption);
-
-        return await rootCommand.InvokeAsync(args);
-    }
-
-    private static void RootCommandHandler(string inputPath, string outputPath, string syntax, bool verbose, bool asmOnly)
-    {
-        CompilerOptions options = new()
-        {
-            OutputPath = outputPath,
-            Syntax = syntax,
-            Verbose = verbose,
-            AsmOnly = asmOnly
-        };
-
-        CompilerService compiler = new(options);
-        (bool success, string? assemblyPath, string? executablePath) = compiler.Compile(inputPath);
-
-        Environment.ExitCode = success
-            ? 0
-            : 1;
-    }
-}
-```
-
----
-
-### `Snek\Snek.csproj`
-
-```xml
-<Project Sdk="Microsoft.NET.Sdk">
-
-  <PropertyGroup>
-    <OutputType>Exe</OutputType>
-  </PropertyGroup>
-
-  <ItemGroup>
-    <PackageReference Include="System.CommandLine" Version="2.0.0-beta4.22272.1" />
-  </ItemGroup>
-
-</Project>
-```
-
----
-
-### `Snek\Analysis\BinaryOperatorTypeResolver.cs`
-
-```csharp
-using Snek.Lexing;
-
-namespace Snek.Analysis;
+namespace Snek.Core.Analysis;
 
 public static class BinaryOperatorTypeResolver
 {
@@ -186,7 +88,8 @@ public static class BinaryOperatorTypeResolver
 
     private static bool IsComparisonOperator(TokenType type)
     {
-        return type is TokenType.DoubleEquals
+        return type
+            is TokenType.DoubleEquals
             or TokenType.NotEquals
             or TokenType.LessThan
             or TokenType.GreaterThan
@@ -198,10 +101,10 @@ public static class BinaryOperatorTypeResolver
 
 ---
 
-### `Snek\Analysis\BuiltinFunctionProvider.cs`
+### `Snek.Core\Analysis\BuiltinFunctionProvider.cs`
 
 ```csharp
-namespace Snek.Analysis;
+namespace Snek.Core.Analysis;
 
 public static class BuiltinFunctionProvider
 {
@@ -225,14 +128,14 @@ public static class BuiltinFunctionProvider
 
 ---
 
-### `Snek\Analysis\CallValidator.cs`
+### `Snek.Core\Analysis\CallValidator.cs`
 
 ```csharp
-using Snek.Ast;
-using Snek.Diagnoistics;
-using Snek.Pipeline;
+using Snek.Core.Ast;
+using Snek.Core.Diagnoistics;
+using Snek.Core.Pipeline;
 
-namespace Snek.Analysis;
+namespace Snek.Core.Analysis;
 
 public class CallValidator
 {
@@ -274,7 +177,9 @@ public class CallValidator
 
     private string? ExtractCalleeName(CallExpressionNode call)
     {
-        return call.Callee is IdentifierExpressionNode identifier ? identifier.Name.Value : null;
+        return call.Callee is IdentifierExpressionNode identifier
+            ? identifier.Name.Value
+            : null;
     }
 
     private bool TryGetUserDefinedFunction(string calleeName, out FunctionType? functionType)
@@ -291,21 +196,23 @@ public class CallValidator
 
     private void ValidateArgumentCount(CallExpressionNode call, string calleeName, FunctionType functionType)
     {
-        if (call.Arguments.Count != functionType.Parameters.Count)
+        if (call.Arguments.Count == functionType.Parameters.Count)
         {
-            int callLine = call.Callee is IdentifierExpressionNode identifier ? identifier.Name.Line : -1;
-            _context.Diagnostics.Add(new Diagnostic(
-                _context.SourceName,
-                $"Function '{calleeName}' expects {functionType.Parameters.Count} args, got {call.Arguments.Count}",
-                callLine, -1,
-                DiagnosticSeverity.Error));
+            return;
         }
+
+        int callLine = call.Callee is IdentifierExpressionNode identifier ? identifier.Name.Line : -1;
+        _context.Diagnostics.Add(new(
+            _context.SourceName,
+            $"Function '{calleeName}' expects {functionType.Parameters.Count} args, got {call.Arguments.Count}",
+            callLine, -1,
+            DiagnosticSeverity.Error));
     }
 
     private void ReportUndefinedFunction(CallExpressionNode call, string calleeName)
     {
         int line = call.Callee is IdentifierExpressionNode identifier ? identifier.Name.Line : -1;
-        _context.Diagnostics.Add(new Diagnostic(
+        _context.Diagnostics.Add(new(
             _context.SourceName,
             $"Undefined function '{calleeName}'",
             line, -1,
@@ -316,13 +223,10 @@ public class CallValidator
 
 ---
 
-### `Snek\Analysis\ExpressionAnalyzer.cs`
+### `Snek.Core\Analysis\ExpressionAnalyzer.cs`
 
 ```csharp
-using Snek.Ast;
-using Snek.Pipeline;
-
-namespace Snek.Analysis;
+namespace Snek.Core.Analysis;
 
 public class ExpressionAnalyzer
 {
@@ -373,14 +277,13 @@ public class ExpressionAnalyzer
 
 ---
 
-### `Snek\Analysis\ExpressionTypeResolver.cs`
+### `Snek.Core\Analysis\ExpressionTypeResolver.cs`
 
 ```csharp
-using Snek.Ast;
-using Snek.Diagnoistics;
-using Snek.Pipeline;
+using Snek.Core.Ast;
+using Snek.Core.Diagnoistics;
 
-namespace Snek.Analysis;
+namespace Snek.Core.Analysis;
 
 public class ExpressionTypeResolver
 {
@@ -448,12 +351,12 @@ public class ExpressionTypeResolver
 
 ---
 
-### `Snek\Analysis\FunctionType.cs`
+### `Snek.Core\Analysis\FunctionType.cs`
 
 ```csharp
-using Snek.Ast;
+using Snek.Core.Ast;
 
-namespace Snek.Analysis;
+namespace Snek.Core.Analysis;
 
 public record FunctionType(string Name, List<ParameterNode> Parameters, TypeKind? ReturnType)
 {
@@ -468,13 +371,13 @@ public record FunctionType(string Name, List<ParameterNode> Parameters, TypeKind
 
 ---
 
-### `Snek\Analysis\ISemanticAnalyzer.cs`
+### `Snek.Core\Analysis\ISemanticAnalyzer.cs`
 
 ```csharp
-using Snek.Ast;
-using Snek.Pipeline;
+using Snek.Core.Ast;
+using Snek.Core.Pipeline;
 
-namespace Snek.Analysis;
+namespace Snek.Core.Analysis;
 
 public interface ISemanticAnalyzer
 {
@@ -486,10 +389,10 @@ public interface ISemanticAnalyzer
 
 ---
 
-### `Snek\Analysis\Scope.cs`
+### `Snek.Core\Analysis\Scope.cs`
 
 ```csharp
-namespace Snek.Analysis;
+namespace Snek.Core.Analysis;
 
 public class Scope
 {
@@ -500,12 +403,10 @@ public class Scope
 
 ---
 
-### `Snek\Analysis\ScopeManager.cs`
+### `Snek.Core\Analysis\ScopeManager.cs`
 
 ```csharp
-using Snek.Pipeline;
-
-namespace Snek.Analysis;
+namespace Snek.Core.Analysis;
 
 public class ScopeManager
 {
@@ -581,13 +482,13 @@ public class ScopeManager
 
 ---
 
-### `Snek\Analysis\SemanticAnalyzer.cs`
+### `Snek.Core\Analysis\SemanticAnalyzer.cs`
 
 ```csharp
-using Snek.Ast;
-using Snek.Pipeline;
+using Snek.Core.Ast;
+using Snek.Core.Pipeline;
 
-namespace Snek.Analysis;
+namespace Snek.Core.Analysis;
 
 public class SemanticAnalyzer : ISemanticAnalyzer
 {
@@ -670,14 +571,13 @@ public class SemanticAnalyzer : ISemanticAnalyzer
 
 ---
 
-### `Snek\Analysis\StatementAnalyzer.cs`
+### `Snek.Core\Analysis\StatementAnalyzer.cs`
 
 ```csharp
-using Snek.Ast;
-using Snek.Diagnoistics;
-using Snek.Pipeline;
+using Snek.Core.Ast;
+using Snek.Core.Diagnoistics;
 
-namespace Snek.Analysis;
+namespace Snek.Core.Analysis;
 
 public class StatementAnalyzer
 {
@@ -899,10 +799,10 @@ public class StatementAnalyzer
 
 ---
 
-### `Snek\Analysis\SymbolInfo.cs`
+### `Snek.Core\Analysis\SymbolInfo.cs`
 
 ```csharp
-namespace Snek.Analysis;
+namespace Snek.Core.Analysis;
 
 public record SymbolInfo(TypeKind Type, int Line, int Column, object? Metadata = null)
 {
@@ -913,10 +813,10 @@ public record SymbolInfo(TypeKind Type, int Line, int Column, object? Metadata =
 
 ---
 
-### `Snek\Analysis\TypeKind.cs`
+### `Snek.Core\Analysis\TypeKind.cs`
 
 ```csharp
-namespace Snek.Analysis;
+namespace Snek.Core.Analysis;
 
 public enum TypeKind
 {
@@ -935,12 +835,10 @@ public enum TypeKind
 
 ---
 
-### `Snek\Analysis\TypeKindExtensions.cs`
+### `Snek.Core\Analysis\TypeKindExtensions.cs`
 
 ```csharp
-using Snek.Lexing;
-
-namespace Snek.Analysis;
+namespace Snek.Core.Analysis;
 
 public static class TypeKindExtensions
 {
@@ -992,10 +890,10 @@ public static class TypeKindExtensions
 
 ---
 
-### `Snek\Ast\AstNode.cs`
+### `Snek.Core\Ast\AstNode.cs`
 
 ```csharp
-namespace Snek.Ast;
+namespace Snek.Core.Ast;
 
 public abstract record AstNode
 {
@@ -1023,94 +921,92 @@ public abstract record AstNode
 
 ---
 
-### `Snek\Ast\BinaryExpressionNode.cs`
+### `Snek.Core\Ast\BinaryExpressionNode.cs`
 
 ```csharp
-using Snek.Lexing;
-
-namespace Snek.Ast;
+namespace Snek.Core.Ast;
 
 public record BinaryExpressionNode(ExpressionNode Left, Token Operator, ExpressionNode Right) : ExpressionNode;
 ```
 
 ---
 
-### `Snek\Ast\BreakStatementNode.cs`
+### `Snek.Core\Ast\BreakStatementNode.cs`
 
 ```csharp
-namespace Snek.Ast;
+namespace Snek.Core.Ast;
 
 public record BreakStatementNode : StatementNode;
 ```
 
 ---
 
-### `Snek\Ast\CallExpressionNode.cs`
+### `Snek.Core\Ast\CallExpressionNode.cs`
 
 ```csharp
-namespace Snek.Ast;
+namespace Snek.Core.Ast;
 
 public record CallExpressionNode(ExpressionNode Callee, List<ExpressionNode> Arguments) : ExpressionNode;
 ```
 
 ---
 
-### `Snek\Ast\ContinueStatementNode.cs`
+### `Snek.Core\Ast\ContinueStatementNode.cs`
 
 ```csharp
-namespace Snek.Ast;
+namespace Snek.Core.Ast;
 
 public record ContinueStatementNode : StatementNode;
 ```
 
 ---
 
-### `Snek\Ast\DeclarationNode.cs`
+### `Snek.Core\Ast\DeclarationNode.cs`
 
 ```csharp
-namespace Snek.Ast;
+namespace Snek.Core.Ast;
 
 public abstract record DeclarationNode : AstNode;
 ```
 
 ---
 
-### `Snek\Ast\DictExpressionNode.cs`
+### `Snek.Core\Ast\DictExpressionNode.cs`
 
 ```csharp
-namespace Snek.Ast;
+namespace Snek.Core.Ast;
 
 public record DictExpressionNode(List<(ExpressionNode Key, ExpressionNode Value)> Items) : ExpressionNode;
 ```
 
 ---
 
-### `Snek\Ast\ExpressionNode.cs`
+### `Snek.Core\Ast\ExpressionNode.cs`
 
 ```csharp
-namespace Snek.Ast;
+namespace Snek.Core.Ast;
 
 public abstract record ExpressionNode : AstNode;
 ```
 
 ---
 
-### `Snek\Ast\ExpressionStatementNode.cs`
+### `Snek.Core\Ast\ExpressionStatementNode.cs`
 
 ```csharp
-namespace Snek.Ast;
+namespace Snek.Core.Ast;
 
 public record ExpressionStatementNode(ExpressionNode Expression) : StatementNode;
 ```
 
 ---
 
-### `Snek\Ast\FunctionDefNode.cs`
+### `Snek.Core\Ast\FunctionDefNode.cs`
 
 ```csharp
-using Snek.Lexing;
+using Snek.Core.Lexing;
 
-namespace Snek.Ast;
+namespace Snek.Core.Ast;
 
 public record FunctionDefNode(
     Token Name,
@@ -1122,22 +1018,22 @@ public record FunctionDefNode(
 
 ---
 
-### `Snek\Ast\IdentifierExpressionNode.cs`
+### `Snek.Core\Ast\IdentifierExpressionNode.cs`
 
 ```csharp
-using Snek.Lexing;
+using Snek.Core.Lexing;
 
-namespace Snek.Ast;
+namespace Snek.Core.Ast;
 
 public record IdentifierExpressionNode(Token Name) : ExpressionNode;
 ```
 
 ---
 
-### `Snek\Ast\IfStatementNode.cs`
+### `Snek.Core\Ast\IfStatementNode.cs`
 
 ```csharp
-namespace Snek.Ast;
+namespace Snek.Core.Ast;
 
 public record IfStatementNode(
     ExpressionNode Condition,
@@ -1148,108 +1044,108 @@ public record IfStatementNode(
 
 ---
 
-### `Snek\Ast\IndexExpressionNode.cs`
+### `Snek.Core\Ast\IndexExpressionNode.cs`
 
 ```csharp
-namespace Snek.Ast;
+namespace Snek.Core.Ast;
 
 public record IndexExpressionNode(ExpressionNode Target, ExpressionNode Index) : ExpressionNode;
 ```
 
 ---
 
-### `Snek\Ast\ListExpressionNode.cs`
+### `Snek.Core\Ast\ListExpressionNode.cs`
 
 ```csharp
-namespace Snek.Ast;
+namespace Snek.Core.Ast;
 
 public record ListExpressionNode(List<ExpressionNode> Elements) : ExpressionNode;
 ```
 
 ---
 
-### `Snek\Ast\LiteralExpressionNode.cs`
+### `Snek.Core\Ast\LiteralExpressionNode.cs`
 
 ```csharp
-using Snek.Lexing;
+using Snek.Core.Lexing;
 
-namespace Snek.Ast;
+namespace Snek.Core.Ast;
 
 public record LiteralExpressionNode(Token Value) : ExpressionNode;
 ```
 
 ---
 
-### `Snek\Ast\MemberAccessExpressionNode.cs`
+### `Snek.Core\Ast\MemberAccessExpressionNode.cs`
 
 ```csharp
-using Snek.Lexing;
+using Snek.Core.Lexing;
 
-namespace Snek.Ast;
+namespace Snek.Core.Ast;
 
 public record MemberAccessExpressionNode(ExpressionNode Object, Token Member) : ExpressionNode;
 ```
 
 ---
 
-### `Snek\Ast\ParameterNode.cs`
+### `Snek.Core\Ast\ParameterNode.cs`
 
 ```csharp
-using Snek.Lexing;
+using Snek.Core.Lexing;
 
-namespace Snek.Ast;
+namespace Snek.Core.Ast;
 
 public record ParameterNode(Token Name, TypeNode? TypeAnnotation, ExpressionNode? Default) : AstNode;
 ```
 
 ---
 
-### `Snek\Ast\PassStatementNode.cs`
+### `Snek.Core\Ast\PassStatementNode.cs`
 
 ```csharp
-namespace Snek.Ast;
+namespace Snek.Core.Ast;
 
 public record PassStatementNode : StatementNode;
 ```
 
 ---
 
-### `Snek\Ast\ProgramNode.cs`
+### `Snek.Core\Ast\ProgramNode.cs`
 
 ```csharp
-namespace Snek.Ast;
+namespace Snek.Core.Ast;
 
 public record ProgramNode(List<StatementNode> Statements) : AstNode;
 ```
 
 ---
 
-### `Snek\Ast\ReturnStatementNode.cs`
+### `Snek.Core\Ast\ReturnStatementNode.cs`
 
 ```csharp
-namespace Snek.Ast;
+namespace Snek.Core.Ast;
 
 public record ReturnStatementNode(ExpressionNode? Value) : StatementNode;
 ```
 
 ---
 
-### `Snek\Ast\StatementNode.cs`
+### `Snek.Core\Ast\StatementNode.cs`
 
 ```csharp
-namespace Snek.Ast;
+namespace Snek.Core.Ast;
 
 public abstract record StatementNode : AstNode;
 ```
 
 ---
 
-### `Snek\Ast\TypeNode.cs`
+### `Snek.Core\Ast\TypeNode.cs`
 
 ```csharp
-using Snek.Lexing;
+using Snek.Core.Lexing;
 
-namespace Snek.Ast;
+namespace Snek.Core.Ast;
 
 public record TypeNode(Token Name, List<TypeNode>? GenericArgs) : AstNode
 {
@@ -1267,24 +1163,24 @@ public record TypeNode(Token Name, List<TypeNode>? GenericArgs) : AstNode
 
 ---
 
-### `Snek\Ast\UnaryExpressionNode.cs`
+### `Snek.Core\Ast\UnaryExpressionNode.cs`
 
 ```csharp
-using Snek.Lexing;
+using Snek.Core.Lexing;
 
-namespace Snek.Ast;
+namespace Snek.Core.Ast;
 
 public record UnaryExpressionNode(Token Operator, ExpressionNode Operand) : ExpressionNode;
 ```
 
 ---
 
-### `Snek\Ast\VariableDeclarationNode.cs`
+### `Snek.Core\Ast\VariableDeclarationNode.cs`
 
 ```csharp
-using Snek.Lexing;
+using Snek.Core.Lexing;
 
-namespace Snek.Ast;
+namespace Snek.Core.Ast;
 
 public record VariableDeclarationNode(
     Token Name,
@@ -1296,10 +1192,10 @@ public record VariableDeclarationNode(
 
 ---
 
-### `Snek\Ast\WhileStatementNode.cs`
+### `Snek.Core\Ast\WhileStatementNode.cs`
 
 ```csharp
-namespace Snek.Ast;
+namespace Snek.Core.Ast;
 
 public record WhileStatementNode(
     ExpressionNode Condition,
@@ -1309,13 +1205,13 @@ public record WhileStatementNode(
 
 ---
 
-### `Snek\Compiler\Assembler.cs`
+### `Snek.Core\Compiler\Assembler.cs`
 
 ```csharp
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 
-namespace Snek.Compiler;
+namespace Snek.Core.Compiler;
 
 public sealed class Assembler
 {
@@ -1445,10 +1341,10 @@ public sealed class Assembler
 
 ---
 
-### `Snek\Compiler\CompilerOptions.cs`
+### `Snek.Core\Compiler\CompilerOptions.cs`
 
 ```csharp
-namespace Snek.Compiler;
+namespace Snek.Core.Compiler;
 
 public class CompilerOptions
 {
@@ -1461,17 +1357,17 @@ public class CompilerOptions
 
 ---
 
-### `Snek\Compiler\CompilerService.cs`
+### `Snek.Core\Compiler\CompilerService.cs`
 
 ```csharp
-using Snek.Analysis;
-using Snek.Diagnoistics;
-using Snek.Generation;
-using Snek.Lexing;
-using Snek.Parsing;
-using Snek.Pipeline;
+using Snek.Core.Analysis;
+using Snek.Core.Diagnoistics;
+using Snek.Core.Generation;
+using Snek.Core.Lexing;
+using Snek.Core.Parsing;
+using Snek.Core.Pipeline;
 
-namespace Snek.Compiler;
+namespace Snek.Core.Compiler;
 
 public class CompilerService
 {
@@ -1621,10 +1517,10 @@ public class CompilerService
 
 ---
 
-### `Snek\Diagnoistics\Diagnostic.cs`
+### `Snek.Core\Diagnoistics\Diagnostic.cs`
 
 ```csharp
-namespace Snek.Diagnoistics;
+namespace Snek.Core.Diagnoistics;
 
 public record Diagnostic(
     string SourceName,
@@ -1650,10 +1546,10 @@ public record Diagnostic(
 
 ---
 
-### `Snek\Diagnoistics\DiagnosticPrinter.cs`
+### `Snek.Core\Diagnoistics\DiagnosticPrinter.cs`
 
 ```csharp
-namespace Snek.Diagnoistics;
+namespace Snek.Core.Diagnoistics;
 
 public class DiagnosticPrinter
 {
@@ -1725,10 +1621,10 @@ public class DiagnosticPrinter
 
 ---
 
-### `Snek\Diagnoistics\DiagnosticSeverity.cs`
+### `Snek.Core\Diagnoistics\DiagnosticSeverity.cs`
 
 ```csharp
-namespace Snek.Diagnoistics;
+namespace Snek.Core.Diagnoistics;
 
 public enum DiagnosticSeverity
 {
@@ -1739,13 +1635,10 @@ public enum DiagnosticSeverity
 
 ---
 
-### `Snek\Generation\BuiltinFunctionEmitter.cs`
+### `Snek.Core\Generation\BuiltinFunctionEmitter.cs`
 
 ```csharp
-using Snek.Ast;
-using Snek.Lexing;
-
-namespace Snek.Generation;
+namespace Snek.Core.Generation;
 
 public class BuiltinFunctionEmitter
 {
@@ -1844,13 +1737,13 @@ public class BuiltinFunctionEmitter
 
 ---
 
-### `Snek\Generation\CodeGenerator.cs`
+### `Snek.Core\Generation\CodeGenerator.cs`
 
 ```csharp
-using Snek.Ast;
-using Snek.Pipeline;
+using Snek.Core.Ast;
+using Snek.Core.Pipeline;
 
-namespace Snek.Generation;
+namespace Snek.Core.Generation;
 
 public class CodeGenerator : ICodeGenerator
 {
@@ -1918,13 +1811,12 @@ public class CodeGenerator : ICodeGenerator
 
 ---
 
-### `Snek\Generation\ExpressionEmitter.cs`
+### `Snek.Core\Generation\ExpressionEmitter.cs`
 
 ```csharp
-using Snek.Ast;
-using Snek.Lexing;
+using Snek.Core.Ast;
 
-namespace Snek.Generation;
+namespace Snek.Core.Generation;
 
 public class ExpressionEmitter
 {
@@ -2092,12 +1984,12 @@ public class ExpressionEmitter
 
 ---
 
-### `Snek\Generation\GenerationContext.cs`
+### `Snek.Core\Generation\GenerationContext.cs`
 
 ```csharp
 using System.Text;
 
-namespace Snek.Generation;
+namespace Snek.Core.Generation;
 
 public class GenerationContext
 {
@@ -2202,13 +2094,13 @@ public class GenerationContext
 
 ---
 
-### `Snek\Generation\ICodeGenerator.cs`
+### `Snek.Core\Generation\ICodeGenerator.cs`
 
 ```csharp
-using Snek.Ast;
-using Snek.Pipeline;
+using Snek.Core.Ast;
+using Snek.Core.Pipeline;
 
-namespace Snek.Generation;
+namespace Snek.Core.Generation;
 
 public interface ICodeGenerator
 {
@@ -2218,10 +2110,10 @@ public interface ICodeGenerator
 
 ---
 
-### `Snek\Generation\SectionEmitter.cs`
+### `Snek.Core\Generation\SectionEmitter.cs`
 
 ```csharp
-namespace Snek.Generation;
+namespace Snek.Core.Generation;
 
 public class SectionEmitter
 {
@@ -2379,12 +2271,12 @@ public class SectionEmitter
 
 ---
 
-### `Snek\Generation\StatementEmitter.cs`
+### `Snek.Core\Generation\StatementEmitter.cs`
 
 ```csharp
-using Snek.Ast;
+using Snek.Core.Ast;
 
-namespace Snek.Generation;
+namespace Snek.Core.Generation;
 
 public class StatementEmitter
 {
@@ -2604,14 +2496,14 @@ public class StatementEmitter
 
 ---
 
-### `Snek\Generation\StringCollector.cs`
+### `Snek.Core\Generation\StringCollector.cs`
 
 ```csharp
-using Snek.Ast;
-using Snek.Lexing;
+using Snek.Core.Ast;
+using Snek.Core.Lexing;
 using System.Reflection;
 
-namespace Snek.Generation;
+namespace Snek.Core.Generation;
 
 public class StringCollector
 {
@@ -2731,12 +2623,10 @@ public class StringCollector
 
 ---
 
-### `Snek\Lexing\ILexer.cs`
+### `Snek.Core\Lexing\ILexer.cs`
 
 ```csharp
-using Snek.Pipeline;
-
-namespace Snek.Lexing;
+namespace Snek.Core.Lexing;
 
 public interface ILexer
 {
@@ -2746,14 +2636,13 @@ public interface ILexer
 
 ---
 
-### `Snek\Lexing\Lexer.cs`
+### `Snek.Core\Lexing\Lexer.cs`
 
 ```csharp
-using Snek.Diagnoistics;
-using Snek.Pipeline;
+using Snek.Core.Pipeline;
 using System.Text;
 
-namespace Snek.Lexing;
+namespace Snek.Core.Lexing;
 
 public class Lexer : ILexer
 {
@@ -3164,10 +3053,10 @@ public class Lexer : ILexer
 
 ---
 
-### `Snek\Lexing\LexerRules.cs`
+### `Snek.Core\Lexing\LexerRules.cs`
 
 ```csharp
-namespace Snek.Lexing;
+namespace Snek.Core.Lexing;
 
 public class LexerRules
 {
@@ -3266,10 +3155,10 @@ public class LexerRules
 
 ---
 
-### `Snek\Lexing\Token.cs`
+### `Snek.Core\Lexing\Token.cs`
 
 ```csharp
-namespace Snek.Lexing;
+namespace Snek.Core.Lexing;
 
 public record Token(TokenType Type, string Value, int Line, int Column)
 {
@@ -3282,10 +3171,10 @@ public record Token(TokenType Type, string Value, int Line, int Column)
 
 ---
 
-### `Snek\Lexing\TokenType.cs`
+### `Snek.Core\Lexing\TokenType.cs`
 
 ```csharp
-namespace Snek.Lexing;
+namespace Snek.Core.Lexing;
 
 public enum TokenType
 {
@@ -3381,13 +3270,13 @@ public enum TokenType
 
 ---
 
-### `Snek\Parsing\ExpressionParser.cs`
+### `Snek.Core\Parsing\ExpressionParser.cs`
 
 ```csharp
-using Snek.Ast;
-using Snek.Lexing;
+using Snek.Core.Ast;
+using Snek.Core.Lexing;
 
-namespace Snek.Parsing;
+namespace Snek.Core.Parsing;
 
 public class ExpressionParser
 {
@@ -3562,14 +3451,14 @@ public class ExpressionParser
 
 ---
 
-### `Snek\Parsing\IParser.cs`
+### `Snek.Core\Parsing\IParser.cs`
 
 ```csharp
-using Snek.Ast;
-using Snek.Lexing;
-using Snek.Pipeline;
+using Snek.Core.Ast;
+using Snek.Core.Lexing;
+using Snek.Core.Pipeline;
 
-namespace Snek.Parsing;
+namespace Snek.Core.Parsing;
 
 public interface IParser
 {
@@ -3579,14 +3468,14 @@ public interface IParser
 
 ---
 
-### `Snek\Parsing\Parser.cs`
+### `Snek.Core\Parsing\Parser.cs`
 
 ```csharp
-using Snek.Ast;
-using Snek.Lexing;
-using Snek.Pipeline;
+using Snek.Core.Ast;
+using Snek.Core.Lexing;
+using Snek.Core.Pipeline;
 
-namespace Snek.Parsing;
+namespace Snek.Core.Parsing;
 
 public class Parser : IParser
 {
@@ -3610,13 +3499,13 @@ public class Parser : IParser
 
 ---
 
-### `Snek\Parsing\ParserExtensions.cs`
+### `Snek.Core\Parsing\ParserExtensions.cs`
 
 ```csharp
-using Snek.Lexing;
-using Snek.Pipeline;
+using Snek.Core.Lexing;
+using Snek.Core.Pipeline;
 
-namespace Snek.Parsing;
+namespace Snek.Core.Parsing;
 
 public static class ParserExtensions
 {
@@ -3679,14 +3568,13 @@ public static class ParserExtensions
 
 ---
 
-### `Snek\Parsing\ParserStream.cs`
+### `Snek.Core\Parsing\ParserStream.cs`
 
 ```csharp
-using Snek.Diagnoistics;
-using Snek.Lexing;
-using Snek.Pipeline;
+using Snek.Core.Lexing;
+using Snek.Core.Pipeline;
 
-namespace Snek.Parsing;
+namespace Snek.Core.Parsing;
 
 public class ParserStream
 {
@@ -3771,13 +3659,13 @@ public class ParserStream
 
 ---
 
-### `Snek\Parsing\StatementParser.cs`
+### `Snek.Core\Parsing\StatementParser.cs`
 
 ```csharp
-using Snek.Ast;
-using Snek.Lexing;
+using Snek.Core.Ast;
+using Snek.Core.Lexing;
 
-namespace Snek.Parsing;
+namespace Snek.Core.Parsing;
 
 public class StatementParser
 {
@@ -4125,17 +4013,13 @@ public class StatementParser
 
 ---
 
-### `Snek\Pipeline\CompilationContext.cs`
+### `Snek.Core\Pipeline\CompilationContext.cs`
 
 ```csharp
-using Snek.Diagnoistics;
+using Snek.Core.Diagnoistics;
 
-namespace Snek.Pipeline;
+namespace Snek.Core.Pipeline;
 
-/// <summary>
-/// Mutable context object shared across all pipeline stages.
-/// Holds diagnostics, configuration, and stage-specific caches.
-/// </summary>
 public class CompilationContext
 {
     public string SourceName { get; }
@@ -4165,12 +4049,10 @@ public class CompilationContext
 
 ---
 
-### `Snek\Pipeline\CompilationResult.cs`
+### `Snek.Core\Pipeline\CompilationResult.cs`
 
 ```csharp
-using Snek.Diagnoistics;
-
-namespace Snek.Pipeline;
+namespace Snek.Core.Pipeline;
 
 public record CompilationResult(string? Output, IReadOnlyList<Diagnostic> Diagnostics)
 {
@@ -4184,17 +4066,17 @@ public record CompilationResult(string? Output, IReadOnlyList<Diagnostic> Diagno
 
 ---
 
-### `Snek\Pipeline\CompilerPipeline.cs`
+### `Snek.Core\Pipeline\CompilerPipeline.cs`
 
 ```csharp
-using Snek.Analysis;
-using Snek.Ast;
-using Snek.Diagnoistics;
-using Snek.Generation;
-using Snek.Lexing;
-using Snek.Parsing;
+using Snek.Core.Analysis;
+using Snek.Core.Ast;
+using Snek.Core.Diagnoistics;
+using Snek.Core.Generation;
+using Snek.Core.Lexing;
+using Snek.Core.Parsing;
 
-namespace Snek.Pipeline;
+namespace Snek.Core.Pipeline;
 
 public class CompilerPipeline
 {
@@ -4287,12 +4169,10 @@ public class CompilerPipeline
 
 ---
 
-### `Snek\Pipeline\IPipelineStage.cs`
+### `Snek.Core\Pipeline\IPipelineStage.cs`
 
 ```csharp
-using Snek.Diagnoistics;
-
-namespace Snek.Pipeline;
+namespace Snek.Core.Pipeline;
 
 public interface IPipelineStage
 {
@@ -4304,10 +4184,10 @@ public interface IPipelineStage
 
 ---
 
-### `Snek\Pipeline\PipelineOptions.cs`
+### `Snek.Core\Pipeline\PipelineOptions.cs`
 
 ```csharp
-namespace Snek.Pipeline;
+namespace Snek.Core.Pipeline;
 
 public record PipelineOptions
 {
@@ -4319,10 +4199,10 @@ public record PipelineOptions
 
 ---
 
-### `Snek\Pipeline\TargetPlatform.cs`
+### `Snek.Core\Pipeline\TargetPlatform.cs`
 
 ```csharp
-namespace Snek.Pipeline;
+namespace Snek.Core.Pipeline;
 
 public enum TargetPlatform
 {
@@ -4334,31 +4214,161 @@ public enum TargetPlatform
 
 ---
 
+### `Snek\CompileCommand.cs`
+
+```csharp
+using Snek.Core.Compiler;
+using Spectre.Console.Cli;
+using System.ComponentModel;
+using System.Diagnostics.CodeAnalysis;
+
+namespace Snek;
+
+[Description("Snek Compiler - compiles .snek files to executables")]
+public class CompileCommand : Command<CompilerSettings>
+{
+    protected override int Execute(
+        [NotNull] CommandContext context,
+        [NotNull] CompilerSettings settings,
+        CancellationToken cancellationToken)
+    {
+        CompilerOptions options = new()
+        {
+            OutputPath = settings.OutputPath,
+            Syntax = settings.Syntax,
+            Verbose = settings.Verbose,
+            AsmOnly = settings.AsmOnly
+        };
+
+        CompilerService compiler = new(options);
+        (bool success, _, _) = compiler.Compile(settings.InputPath);
+
+        return success ? 0 : 1;
+    }
+}
+```
+
+---
+
+### `Snek\CompilerSettings.cs`
+
+```csharp
+using Spectre.Console.Cli;
+using System.ComponentModel;
+
+namespace Snek;
+
+public class CompilerSettings : CommandSettings
+{
+    [CommandArgument(0, "<INPUT>")]
+    [Description("Path to the input .snek file")]
+    public required string InputPath { get; set; }
+
+    [CommandOption("-o|--output <OUTPUT>")]
+    [Description("Specify output file (default: output.asm or output.exe)")]
+    public string? OutputPath { get; set; }
+
+    [CommandOption("--syntax <SYNTAX>")]
+    [Description("Use alternate syntax: python, cstyle (default: python)")]
+    [DefaultValue("python")]
+    public string Syntax { get; set; } = "python";
+
+    [CommandOption("-v|--verbose")]
+    [Description("Enable detailed logging")]
+    public bool Verbose { get; set; }
+
+    [CommandOption("--asm-only")]
+    [Description("Stop after generating assembly (do not assemble)")]
+    public bool AsmOnly { get; set; }
+}
+```
+
+---
+
+### `Snek\Program.cs`
+
+```csharp
+using Spectre.Console.Cli;
+
+namespace Snek;
+
+public class Program
+{
+    public static int Main(string[] args)
+    {
+        CommandApp<CompileCommand> app = new();
+        app.Configure(config =>
+        {
+            config.SetApplicationName("snek");
+            config.SetApplicationVersion("1.0.0");
+        });
+
+        return app.Run(args);
+    }
+}
+```
+
+---
+
+### `Snek\Snek.csproj`
+
+```xml
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<OutputType>Exe</OutputType>
+		<TargetFramework>net10.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Spectre.Console.Cli" Version="0.55.0" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\Snek.Core\Snek.Core.csproj" />
+	</ItemGroup>
+
+</Project>
+```
+
+---
+
 ### `Snek.Tests\Snek.Tests.csproj`
 
 ```xml
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <PropertyGroup>
-    <IsPackable>false</IsPackable>
-    <!-- Output paths are configured centrally in Directory.Build.props -->
-  </PropertyGroup>
+	<PropertyGroup>
+		<TargetFramework>net10.0</TargetFramework>
+		<IsPackable>false</IsPackable>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+	</PropertyGroup>
 
-  <ItemGroup>
-    <PackageReference Include="coverlet.collector" Version="6.0.4" />
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
-    <PackageReference Include="xunit" Version="2.9.3" />
-    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
-    <PackageReference Include="FluentAssertions" Version="8.8.0" />
-  </ItemGroup>
+	<ItemGroup>
+		<PackageReference Include="coverlet.collector" Version="10.0.1">
+		  <PrivateAssets>all</PrivateAssets>
+		  <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+		</PackageReference>
+		<PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.7.0" />
+		<PackageReference Include="xunit.runner.visualstudio" Version="3.1.5">
+		  <PrivateAssets>all</PrivateAssets>
+		  <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+		</PackageReference>
+		<PackageReference Include="FluentAssertions" Version="8.10.0" />
+		<PackageReference Include="xunit.v3" Version="3.2.2" />
+	</ItemGroup>
 
-  <ItemGroup>
-    <ProjectReference Include="..\Snek\Snek.csproj" />
-  </ItemGroup>
+	<ItemGroup>
+		<ProjectReference Include="..\Snek.Core\Snek.Core.csproj" />
+		<ProjectReference Include="..\Snek\Snek.csproj" />
+	</ItemGroup>
 
-  <ItemGroup>
-    <Using Include="Xunit" />
-  </ItemGroup>
+	<ItemGroup>
+		<Using Include="Xunit" />
+	</ItemGroup>
 
 </Project>
 ```
@@ -4368,8 +4378,8 @@ public enum TargetPlatform
 ### `Snek.Tests\TestHelpers.cs`
 
 ```csharp
-using Snek.Ast;
-using Snek.Lexing;
+using Snek.Core.Ast;
+using Snek.Core.Lexing;
 
 namespace Snek.Tests;
 
@@ -4426,11 +4436,10 @@ public static class TestHelpers
 
 ```csharp
 using FluentAssertions;
-using Snek.Analysis;
-using Snek.Ast;
-using Snek.Lexing;
-using Snek.Parsing;
-using Snek.Pipeline;
+using Snek.Core.Analysis;
+using Snek.Core.Lexing;
+using Snek.Core.Parsing;
+using Snek.Core.Pipeline;
 
 namespace Snek.Tests.Analysis;
 
@@ -4556,9 +4565,9 @@ public class SemanticAnalyzerTests
         AnalyzeSource(source);
 
         // Resolve the type of a call to foo(), which should be i32
-        var callExpr = new CallExpressionNode(
+        CallExpressionNode callExpr = new(
             new IdentifierExpressionNode(new(TokenType.Identifier, "foo", 1, 1)),
-            new List<ExpressionNode>());
+            []);
 
         TypeKind? type = _analyzer.ResolveType(callExpr, _context);
 
@@ -4602,12 +4611,12 @@ public class SemanticAnalyzerTests
 
 ```csharp
 using FluentAssertions;
-using Snek.Analysis;
-using Snek.Ast;
-using Snek.Generation;
-using Snek.Lexing;
-using Snek.Parsing;
-using Snek.Pipeline;
+using Snek.Core.Analysis;
+using Snek.Core.Ast;
+using Snek.Core.Generation;
+using Snek.Core.Lexing;
+using Snek.Core.Parsing;
+using Snek.Core.Pipeline;
 
 namespace Snek.Tests.Generation;
 
@@ -4836,8 +4845,8 @@ public sealed class CodeGeneratorTests
 
 ```csharp
 using FluentAssertions;
-using Snek.Lexing;
-using Snek.Pipeline;
+using Snek.Core.Lexing;
+using Snek.Core.Pipeline;
 
 namespace Snek.Tests.Lexing;
 
@@ -4855,7 +4864,7 @@ public class LexerTests
     [Fact]
     public void Tokenize_Identifier_ReturnsIdentifierToken()
     {
-        List<Token> tokens = _lexer.Tokenize("myVar", _context).ToList();
+        List<Token> tokens = [.. _lexer.Tokenize("myVar", _context)];
 
         tokens.Should().ContainSingle(t => t.Type == TokenType.Identifier);
         tokens.First(t => t.Type == TokenType.Identifier).Value.Should().Be("myVar");
@@ -4864,7 +4873,7 @@ public class LexerTests
     [Fact]
     public void Tokenize_IntegerLiteral_ReturnsIntegerToken()
     {
-        List<Token> tokens = _lexer.Tokenize("42", _context).ToList();
+        List<Token> tokens = [.. _lexer.Tokenize("42", _context)];
 
         Token token = tokens.First(t => t.Type == TokenType.IntegerLiteral);
         token.Value.Should().Be("42");
@@ -4873,7 +4882,7 @@ public class LexerTests
     [Fact]
     public void Tokenize_FloatLiteral_ReturnsFloatToken()
     {
-        List<Token> tokens = _lexer.Tokenize("3.14", _context).ToList();
+        List<Token> tokens = [.. _lexer.Tokenize("3.14", _context)];
 
         Token token = tokens.First(t => t.Type == TokenType.FloatLiteral);
         token.Value.Should().Be("3.14");
@@ -4882,7 +4891,7 @@ public class LexerTests
     [Fact]
     public void Tokenize_StringLiteral_ReturnsStringToken()
     {
-        List<Token> tokens = _lexer.Tokenize("\"hello\"", _context).ToList();
+        List<Token> tokens = [.. _lexer.Tokenize("\"hello\"", _context)];
 
         Token token = tokens.First(t => t.Type == TokenType.StringLiteral);
         token.Value.Should().Be("hello");
@@ -4891,7 +4900,7 @@ public class LexerTests
     [Fact]
     public void Tokenize_Keyword_ReturnsKeywordToken()
     {
-        List<Token> tokens = _lexer.Tokenize("fn", _context).ToList();
+        List<Token> tokens = [.. _lexer.Tokenize("fn", _context)];
 
         tokens.Should().Contain(t => t.Type == TokenType.KeywordFn);
     }
@@ -4899,7 +4908,7 @@ public class LexerTests
     [Fact]
     public void Tokenize_Operator_ReturnsCorrectOperatorToken()
     {
-        List<Token> tokens = _lexer.Tokenize("==", _context).ToList();
+        List<Token> tokens = [.. _lexer.Tokenize("==", _context)];
 
         tokens.Should().Contain(t => t.Type == TokenType.DoubleEquals);
     }
@@ -4907,9 +4916,12 @@ public class LexerTests
     [Fact]
     public void Tokenize_WithComments_IgnoresComments()
     {
-        List<Token> tokens = _lexer.Tokenize("x # this is a comment\ny", _context).ToList();
+        List<Token> tokens = [.. _lexer.Tokenize("x # this is a comment\ny", _context)];
 
-        List<string> identifiers = tokens.Where(t => t.Type == TokenType.Identifier).Select(t => t.Value).ToList();
+        List<string> identifiers = [.. tokens
+            .Where(t => t.Type == TokenType.Identifier)
+            .Select(t => t.Value)];
+
         identifiers.Should().Contain("x").And.Contain("y");
         tokens.Select(t => t.Value).Should().NotContain("this is a comment");
     }
@@ -4917,8 +4929,11 @@ public class LexerTests
     [Fact]
     public void Tokenize_WithIndentation_EmitsIndentDedentTokens()
     {
-        string source = "fn main():\n  x = 1";
-        List<Token> tokens = _lexer.Tokenize(source, _context).ToList();
+        string source = """
+            fn main():
+              x = 1
+            """;
+        List<Token> tokens = [.. _lexer.Tokenize(source, _context)];
 
         tokens.Should().Contain(t => t.Type == TokenType.Indent);
         tokens.Should().Contain(t => t.Type == TokenType.Dedent);
@@ -4927,7 +4942,7 @@ public class LexerTests
     [Fact]
     public void Tokenize_UnterminatedString_ReportsError()
     {
-        List<Token> tokens = _lexer.Tokenize("\"unterminated", _context).ToList();
+        List<Token> tokens = [.. _lexer.Tokenize("\"unterminated", _context)];
 
         _context.Diagnostics.Should().Contain(d => d.IsError && d.Message.Contains("Unterminated"));
     }
@@ -4935,7 +4950,7 @@ public class LexerTests
     [Fact]
     public void Tokenize_Eof_ReturnsEofToken()
     {
-        List<Token> tokens = _lexer.Tokenize("", _context).ToList();
+        List<Token> tokens = [.. _lexer.Tokenize("", _context)];
 
         tokens.Should().Contain(t => t.Type == TokenType.Eof);
     }
@@ -4948,10 +4963,6 @@ public class LexerTests
 
 ```csharp
 using FluentAssertions;
-using Snek.Ast;
-using Snek.Lexing;
-using Snek.Parsing;
-using Snek.Pipeline;
 
 namespace Snek.Tests.Parsing;
 
@@ -5096,11 +5107,11 @@ public class ParserTests
 
 ```csharp
 using FluentAssertions;
-using Snek.Analysis;
-using Snek.Generation;
-using Snek.Lexing;
-using Snek.Parsing;
-using Snek.Pipeline;
+using Snek.Core.Analysis;
+using Snek.Core.Generation;
+using Snek.Core.Lexing;
+using Snek.Core.Parsing;
+using Snek.Core.Pipeline;
 
 namespace Snek.Tests.Pipeline;
 

@@ -1,4 +1,6 @@
-﻿namespace Snek.Core.Lexing;
+﻿using Snek.Core.Pipeline;
+
+namespace Snek.Core.Lexing;
 
 public interface ILexer
 {

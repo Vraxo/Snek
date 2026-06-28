@@ -1,3 +1,5 @@
+using Snek.Core.Pipeline;
+
 namespace Snek.Core.Analysis;
 
 public class ScopeManager

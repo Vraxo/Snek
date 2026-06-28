@@ -1,4 +1,8 @@
 using FluentAssertions;
+using Snek.Core.Ast;
+using Snek.Core.Lexing;
+using Snek.Core.Parsing;
+using Snek.Core.Pipeline;
 
 namespace Snek.Tests.Parsing;
 
@@ -24,8 +28,9 @@ public class ParserTests
     public void Parse_FunctionDef_CreatesFunctionDefNode()
     {
         string source = """
-            fn main():
-              pass
+            fn main() {
+              pass;
+            }
             """;
 
         AstNode ast = ParseSource(source);
@@ -41,8 +46,9 @@ public class ParserTests
     public void Parse_IfStatement_CreatesIfStatementNode()
     {
         string source = """
-            if true:
-              pass
+            if true {
+              pass;
+            }
             """;
 
         AstNode ast = ParseSource(source);
@@ -57,8 +63,9 @@ public class ParserTests
     public void Parse_WhileStatement_CreatesWhileStatementNode()
     {
         string source = """
-            while x < 10:
-              x = x + 1
+            while x < 10 {
+              x = x + 1;
+            }
             """;
 
         AstNode ast = ParseSource(source);
@@ -73,8 +80,9 @@ public class ParserTests
     public void Parse_ReturnStatement_CreatesReturnStatementNode()
     {
         string source = """
-            fn foo() -> i32:
-              return 42
+            fn foo() -> i32 {
+              return 42;
+            }
             """;
 
         AstNode ast = ParseSource(source);
@@ -89,7 +97,7 @@ public class ParserTests
     [Fact]
     public void Parse_CallExpression_CreatesCallExpressionNode()
     {
-        string source = "print(\"hello\")";
+        string source = "print(\"hello\");";
         AstNode ast = ParseSource(source);
 
         ast.Should().BeOfType<ProgramNode>();
@@ -102,7 +110,7 @@ public class ParserTests
     [Fact]
     public void Parse_BinaryExpression_CreatesBinaryExpressionNode()
     {
-        string source = "x + y";
+        string source = "x + y;";
         AstNode ast = ParseSource(source);
 
         ast.Should().BeOfType<ProgramNode>();
@@ -116,7 +124,7 @@ public class ParserTests
     public void Parse_InvalidSyntax_ReportsError()
     {
         string source = "fn invalid(:";
-        AstNode ast = ParseSource(source);
+        _ = ParseSource(source);
 
         _context.Diagnostics.Should().Contain(d => d.IsError);
     }
@@ -124,7 +132,7 @@ public class ParserTests
     [Fact]
     public void Parse_ParameterWithTypeAnnotation_ParsesCorrectly()
     {
-        string source = "fn foo(x: i32):\n  pass";
+        string source = "fn foo(x: i32) { pass; }";
         AstNode ast = ParseSource(source);
 
         ast.Should().BeOfType<ProgramNode>();

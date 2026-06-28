@@ -1,4 +1,5 @@
 using Snek.Core.Ast;
+using Snek.Core.Lexing;
 
 namespace Snek.Core.Generation;
 

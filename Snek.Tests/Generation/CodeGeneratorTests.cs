@@ -35,7 +35,7 @@ public sealed class CodeGeneratorTests
     [Fact]
     public void Generate_EmptyProgram_ProducesValidHeader()
     {
-        string source = "pass";
+        string source = "pass;";
 
         string output = GenerateSource(source);
 
@@ -47,7 +47,7 @@ public sealed class CodeGeneratorTests
     [Fact]
     public void Generate_StringLiteral_EmitsDataSection()
     {
-        string source = "print(\"hello\")";
+        string source = "print(\"hello\");";
         string output = GenerateSource(source);
 
         output.Should().Contain("section '.data'");
@@ -57,7 +57,7 @@ public sealed class CodeGeneratorTests
     [Fact]
     public void Generate_FunctionCall_EmitsCallInstruction()
     {
-        string source = "print(\"test\")";
+        string source = "print(\"test\");";
         string output = GenerateSource(source);
 
         output.Should().Contain("call [printf]");
@@ -66,7 +66,7 @@ public sealed class CodeGeneratorTests
     [Fact]
     public void Generate_IntegerLiteral_PushesValue()
     {
-        string source = "42";
+        string source = "42;";
         string output = GenerateSource(source);
 
         output.Should().Contain("push 42");
@@ -75,7 +75,7 @@ public sealed class CodeGeneratorTests
     [Fact]
     public void Generate_BinaryAddition_EmitsAddInstruction()
     {
-        string source = "1 + 2";
+        string source = "1 + 2;";
         string output = GenerateSource(source);
 
         output.Should().Contain("add eax, ebx");
@@ -85,8 +85,9 @@ public sealed class CodeGeneratorTests
     public void Generate_IfStatement_EmitsConditionalJump()
     {
         string source = """
-            if true:
-              x = 1
+            if true {
+              x = 1;
+            }
             """;
 
         string output = GenerateSource(source);
@@ -100,8 +101,9 @@ public sealed class CodeGeneratorTests
     public void Generate_WhileLoop_EmitsLoopStructure()
     {
         string source = """
-            while x < 10:
-              x = x + 1
+            while x < 10 {
+              x = x + 1;
+            }
             """;
 
         string output = GenerateSource(source);
@@ -115,8 +117,9 @@ public sealed class CodeGeneratorTests
     public void Generate_ReturnStatement_EmitsReturnSequence()
     {
         string source = """
-            fn foo() -> int:
-              return 42
+            fn foo() -> int {
+              return 42;
+            }
             """;
 
         string output = GenerateSource(source);
@@ -128,7 +131,7 @@ public sealed class CodeGeneratorTests
     [Fact]
     public void Generate_ExternalFunction_DeclaredInImportSection()
     {
-        string source = "customFunc()";
+        string source = "customFunc();";
 
         string output = GenerateSource(source);
 
@@ -140,8 +143,8 @@ public sealed class CodeGeneratorTests
     public void DeclareAndUseVariable_ShouldStoreAndLoadValue()
     {
         string source = """
-            x: i32 = 42
-            print(x)
+            x: i32 = 42;
+            print(x);
             """;
 
         string output = GenerateSource(source);
@@ -155,8 +158,8 @@ public sealed class CodeGeneratorTests
     public void StringVariable_ShouldStoreString()
     {
         string source = """
-            msg: str = "Hello"
-            print(msg)
+            msg: str = "Hello";
+            print(msg);
             """;
 
         string output = GenerateSource(source);
@@ -170,9 +173,9 @@ public sealed class CodeGeneratorTests
     public void MultipleVariables_ShouldGetDifferentOffsets()
     {
         string source = """
-            a: i32 = 1
-            b: i32 = 2
-            c: i32 = a + b
+            a: i32 = 1;
+            b: i32 = 2;
+            c: i32 = a + b;
             """;
 
         string output = GenerateSource(source);
@@ -185,7 +188,7 @@ public sealed class CodeGeneratorTests
     [Fact]
     public void Generator_VariableWithoutInitializer_ShouldDefaultToZero()
     {
-        string source = "x: i32";
+        string source = "x: i32;";
 
         string output = GenerateSource(source);
 
@@ -196,7 +199,7 @@ public sealed class CodeGeneratorTests
     [Fact]
     public void Generate_TypeMismatch_ShouldReportError()
     {
-        string source = "x: i32 = \"hello\"";
+        string source = "x: i32 = \"hello\";";
         Lexer lexer = new();
         Parser parser = new();
         SemanticAnalyzer analyzer = new();
@@ -212,7 +215,7 @@ public sealed class CodeGeneratorTests
     [Fact]
     public void Generate_UndefinedVariable_ShouldReportError()
     {
-        string source = "print(undefinedVar)";
+        string source = "print(undefinedVar);";
         Lexer lexer = new();
         Parser parser = new();
         SemanticAnalyzer analyzer = new();

@@ -1,3 +1,5 @@
+using Snek.Core.Lexing;
+
 namespace Snek.Core.Analysis;
 
 public static class TypeKindExtensions

@@ -1,5 +1,6 @@
 using Snek.Core.Ast;
 using Snek.Core.Diagnoistics;
+using Snek.Core.Pipeline;
 
 namespace Snek.Core.Analysis;
 
