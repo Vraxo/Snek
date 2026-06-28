@@ -83,6 +83,29 @@ public class StatementParser
             return decl;
         }
 
+        // Check for variable assignment: identifier '=' or '+=' or '-=' expression
+        if (_stream.Current.Type == TokenType.Identifier &&
+            _stream.Peek().Type is TokenType.Equals or TokenType.PlusAssign or TokenType.MinusAssign)
+        {
+            Token name = _stream.Consume(TokenType.Identifier);
+            TokenType op = _stream.Current.Type;
+            _stream.Advance(); // consume assignment operator
+            ExpressionNode value = _expressions.ParseExpression();
+            _stream.Consume(TokenType.Semicolon);
+
+            if (op == TokenType.Equals)
+            {
+                return new AssignmentStatementNode(name, value);
+            }
+            else
+            {
+                TokenType binaryOp = op == TokenType.PlusAssign ? TokenType.Plus : TokenType.Minus;
+                Token opToken = new(binaryOp, binaryOp == TokenType.Plus ? "+" : "-", name.Line, name.Column);
+                BinaryExpressionNode desugared = new(new IdentifierExpressionNode(name), opToken, value);
+                return new AssignmentStatementNode(name, desugared);
+            }
+        }
+
         ExpressionNode expr = _expressions.ParseExpression();
         _stream.Consume(TokenType.Semicolon);
         return new ExpressionStatementNode(expr);

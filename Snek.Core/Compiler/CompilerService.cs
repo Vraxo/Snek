@@ -45,7 +45,10 @@ public class CompilerService
         if (assemblySucceeded)
         {
             string exeOutputPath = DetermineExecutableOutputPath();
-            Console.WriteLine($"Executable created: {exeOutputPath}");
+            Console.ForegroundColor = ConsoleColor.Green;
+            Console.Write("[Snek] ");
+            Console.ResetColor();
+            Console.WriteLine($"Created executable: {exeOutputPath}");
             return (true, asmOutputPath, exeOutputPath);
         }
         else
@@ -96,7 +99,10 @@ public class CompilerService
     private void WriteAssemblyFile(string asmOutputPath, string? assemblyContent)
     {
         File.WriteAllText(asmOutputPath, assemblyContent ?? string.Empty);
-        Console.WriteLine($"Assembly generated: {asmOutputPath}");
+        Console.ForegroundColor = ConsoleColor.Green;
+        Console.Write("[Snek] ");
+        Console.ResetColor();
+        Console.WriteLine($"Generated assembly: {asmOutputPath}");
     }
 
     private bool RunAssembler(string asmOutputPath)
@@ -106,6 +112,9 @@ public class CompilerService
 
         if (!success)
         {
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.Error.Write("[Snek] ");
+            Console.ResetColor();
             Console.Error.WriteLine("Assembly failed. Check FASM output above.");
         }
 
@@ -114,6 +123,9 @@ public class CompilerService
 
     private static void ReportFileNotFound(string sourcePath)
     {
+        Console.ForegroundColor = ConsoleColor.Red;
+        Console.Error.Write("[Snek] ");
+        Console.ResetColor();
         Console.Error.WriteLine($"Error: Input file not found: {sourcePath}");
     }
 

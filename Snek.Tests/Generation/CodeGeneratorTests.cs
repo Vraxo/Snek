@@ -227,4 +227,19 @@ public sealed class CodeGeneratorTests
 
         context.Diagnostics.Should().Contain(d => d.Message.Contains("Undefined identifier"));
     }
+
+    [Fact]
+    public void Generate_VariableAssignment_UpdatesValue()
+    {
+        string source = """
+            x: i32 = 42;
+            x = 100;
+            """;
+
+        string output = GenerateSource(source);
+
+        output.Should().Contain("mov [ebp-4], eax"); // initial store
+        output.Should().Contain("push 100");         // load 100
+        output.Should().Contain("pop eax");          // prepare 100
+    }
 }

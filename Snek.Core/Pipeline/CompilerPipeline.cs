@@ -38,17 +38,15 @@ public class CompilerPipeline
             // Stage 1: Lexing
             if (_options.EnableLogging)
             {
-                Console.WriteLine($"[{sourceName}] Lexing...");
+                LogStage(sourceName, "Lexing");
             }
 
             IEnumerable<Token> tokens = _lexer.Tokenize(source, context);
 
-            // Continue to parsing even with lexer errors — the parser
-            // can often report better, more context-aware diagnostics.
             // Stage 2: Parsing
             if (_options.EnableLogging)
             {
-                Console.WriteLine($"[{sourceName}] Parsing...");
+                LogStage(sourceName, "Parsing");
             }
 
             AstNode ast = _parser.Parse(tokens, context);
@@ -60,7 +58,7 @@ public class CompilerPipeline
             // Stage 3: Semantic Analysis
             if (_options.EnableLogging)
             {
-                Console.WriteLine($"[{sourceName}] Analyzing...");
+                LogStage(sourceName, "Analyzing");
             }
 
             _analyzer.Analyze(ast, context);
@@ -72,7 +70,7 @@ public class CompilerPipeline
             // Stage 4: Code Generation
             if (_options.EnableLogging)
             {
-                Console.WriteLine($"[{sourceName}] Generating...");
+                LogStage(sourceName, "Generating code for");
             }
 
             string? output = _generator.Generate(ast, context);
@@ -92,5 +90,13 @@ public class CompilerPipeline
 
             return new(context.Diagnostics);
         }
+    }
+
+    private static void LogStage(string sourceName, string stage)
+    {
+        Console.ForegroundColor = ConsoleColor.Cyan;
+        Console.Write("[Snek] ");
+        Console.ResetColor();
+        Console.WriteLine($"{stage} '{sourceName}'...");
     }
 }

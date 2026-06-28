@@ -47,7 +47,10 @@ public sealed class Assembler
 
         try
         {
-            Console.WriteLine("Executing FASM assembler...");
+            Console.ForegroundColor = ConsoleColor.Cyan;
+            Console.Write("[FASM] ");
+            Console.ResetColor();
+            Console.WriteLine($"Assembling {Path.GetFileName(asmPath)}...");
 
             ProcessStartInfo startInfo = CreateProcessStartInfo(fasmPath, asmPath, outputDir);
             SetIncludeEnvironmentVariable(startInfo, fasmPath);
@@ -63,16 +66,32 @@ public sealed class Assembler
             string errors = process.StandardError.ReadToEnd();
             process.WaitForExit();
 
-            PrintOutput(output, errors);
-
             if (process.ExitCode == 0)
             {
-                Console.WriteLine("FASM execution successful.");
+                string stats = "";
+                string[] lines = output.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries);
+                foreach (string line in lines)
+                {
+                    if (line.Contains("passes,") && line.Contains("bytes."))
+                    {
+                        stats = $" ({line.Trim()})";
+                        break;
+                    }
+                }
+
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.Write("[FASM] ");
+                Console.ResetColor();
+                Console.WriteLine($"Assembly successful{stats}");
                 return true;
             }
             else
             {
-                Console.Error.WriteLine($"FASM execution failed with exit code {process.ExitCode}.");
+                FormatAndPrintFasmError(output, asmPath, outputDir);
+                if (!string.IsNullOrWhiteSpace(errors))
+                {
+                    Console.Error.Write(errors);
+                }
                 return false;
             }
         }
@@ -80,6 +99,86 @@ public sealed class Assembler
         {
             Console.Error.WriteLine($"Error executing FASM: {ex.Message}");
             return false;
+        }
+    }
+
+    private static void FormatAndPrintFasmError(string output, string asmPath, string outputDir)
+    {
+        string[] lines = output.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None);
+
+        string? errorFile = null;
+        int errorLineNum = -1;
+        string? errorMsg = null;
+        string? faultLine = null;
+
+        for (int i = 0; i < lines.Length; i++)
+        {
+            string line = lines[i].Trim();
+
+            if (line.Contains("[") && line.EndsWith("]:"))
+            {
+                int openBracket = line.LastIndexOf('[');
+                int closeBracket = line.LastIndexOf(']');
+                if (openBracket != -1 && closeBracket != -1 && closeBracket > openBracket)
+                {
+                    errorFile = line[..openBracket].Trim();
+                    string lineStr = line.Substring(openBracket + 1, closeBracket - openBracket - 1);
+                    int.TryParse(lineStr, out errorLineNum);
+
+                    if (i + 1 < lines.Length)
+                    {
+                        faultLine = lines[i + 1].Trim();
+                    }
+                }
+            }
+            else if (line.StartsWith("error:"))
+            {
+                errorMsg = line["error:".Length..].Trim();
+            }
+        }
+
+        if (errorFile != null && errorLineNum > 0 && errorMsg != null)
+        {
+            Console.Error.WriteLine();
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.Error.Write("Assembler Error: ");
+            Console.ResetColor();
+            Console.Error.WriteLine(errorMsg);
+
+            Console.ForegroundColor = ConsoleColor.DarkGray;
+            Console.Error.WriteLine($"  --> {errorFile}:{errorLineNum}");
+            Console.Error.WriteLine("   |");
+
+            Console.ForegroundColor = ConsoleColor.Cyan;
+            Console.Error.Write($"{errorLineNum,4} | ");
+            Console.ResetColor();
+
+            string lineContent = faultLine ?? "";
+            string fullPath = Path.Combine(outputDir, errorFile);
+            if (File.Exists(fullPath))
+            {
+                try
+                {
+                    string[] asmLines = File.ReadAllLines(fullPath);
+                    if (errorLineNum <= asmLines.Length)
+                    {
+                        lineContent = asmLines[errorLineNum - 1];
+                    }
+                }
+                catch { }
+            }
+            Console.Error.WriteLine(lineContent);
+
+            Console.ForegroundColor = ConsoleColor.DarkGray;
+            Console.Error.Write("     | ");
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.Error.WriteLine("^");
+            Console.ResetColor();
+            Console.Error.WriteLine();
+        }
+        else
+        {
+            Console.Write(output);
         }
     }
 
@@ -111,19 +210,6 @@ public sealed class Assembler
         if (Directory.Exists(includePath))
         {
             startInfo.EnvironmentVariables["INCLUDE"] = includePath;
-        }
-    }
-
-    private static void PrintOutput(string output, string errors)
-    {
-        if (!string.IsNullOrWhiteSpace(output))
-        {
-            Console.Write(output);
-        }
-
-        if (!string.IsNullOrWhiteSpace(errors))
-        {
-            Console.Error.Write(errors);
         }
     }
 }

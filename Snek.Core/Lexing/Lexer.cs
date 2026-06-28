@@ -7,6 +7,7 @@ namespace Snek.Core.Lexing;
 public class Lexer : ILexer
 {
     private readonly LexerRules _rules;
+    private readonly List<(string Pattern, TokenType Type)> _orderedOperators;
     private string _source = string.Empty;
     private int _position;
     private int _line = 1;
@@ -16,6 +17,7 @@ public class Lexer : ILexer
     public Lexer(LexerRules? rules = null)
     {
         _rules = rules ?? new();
+        _orderedOperators = _rules.Operators.OrderByDescending(o => o.Pattern.Length).ToList();
     }
 
     public IEnumerable<Token> Tokenize(string source, CompilationContext context)
@@ -31,35 +33,15 @@ public class Lexer : ILexer
         while (!IsAtEnd())
         {
             SkipWhitespaceAndComments();
-            if (IsAtEnd())
-            {
-                break;
-            }
+            if (IsAtEnd()) break;
 
             int startLine = _line;
             int startColumn = _column;
 
-            if (TryReadKeywordOrIdentifier(tokens))
-            {
-                continue;
-            }
-
-            if (TryReadNumber(tokens))
-            {
-                continue;
-            }
-
-            if (TryReadString(tokens))
-            {
-                continue;
-            }
-
-            if (TryReadOperator(tokens))
-            {
-                continue;
-            }
-
-            if (TryReadStructural(tokens))
+            if (TryReadKeywordOrIdentifier(tokens) ||
+                TryReadNumber(tokens) ||
+                TryReadString(tokens) ||
+                TryReadOperator(tokens))
             {
                 continue;
             }
@@ -72,22 +54,14 @@ public class Lexer : ILexer
         return tokens;
     }
 
-    private bool IsAtEnd()
-    {
-        return _position >= _source.Length;
-    }
+    private bool IsAtEnd() => _position >= _source.Length;
 
-    private char Peek(int offset = 0)
-    {
-        return _position + offset < _source.Length
-            ? _source[_position + offset]
-            : '\0';
-    }
+    private char Peek(int offset = 0) =>
+        _position + offset < _source.Length ? _source[_position + offset] : '\0';
 
     private char Advance()
     {
         char c = _source[_position++];
-
         if (c == '\n')
         {
             _line++;
@@ -97,7 +71,6 @@ public class Lexer : ILexer
         {
             _column++;
         }
-
         return c;
     }
 
@@ -106,43 +79,36 @@ public class Lexer : ILexer
         while (!IsAtEnd())
         {
             char c = Peek();
-
             if (char.IsWhiteSpace(c))
             {
                 Advance();
-                continue;
             }
-
-            if (c == '#')
+            else if (c == '#')
             {
-                while (!IsAtEnd() && Peek() != '\n')
-                {
-                    Advance();
-                }
-                continue;
+                while (!IsAtEnd() && Peek() != '\n') Advance();
             }
-
-            break;
+            else
+            {
+                break;
+            }
         }
     }
 
     private bool TryReadKeywordOrIdentifier(List<Token> tokens)
     {
-        if (!char.IsLetter(Peek()) && Peek() != '_' && !_rules.IdentifierStartChars.Contains(Peek()))
+        char first = Peek();
+        if (!char.IsLetter(first) && first != '_' && !_rules.IdentifierStartChars.Contains(first))
         {
             return false;
         }
 
-        int startLine = _line;
-        int startColumn = _column;
-        StringBuilder sb = new();
-
+        int startLine = _line, startColumn = _column, startPos = _position;
         while (!IsAtEnd() && (char.IsLetterOrDigit(Peek()) || Peek() == '_' || _rules.IdentifierContinueChars.Contains(Peek())))
         {
-            sb.Append(Advance());
+            Advance();
         }
 
-        string value = sb.ToString();
+        string value = _source[startPos.._position];
         TokenType type = _rules.Keywords.TryGetValue(value, out TokenType keywordType) ? keywordType : TokenType.Identifier;
         tokens.Add(new Token(type, value, startLine, startColumn));
         return true;
@@ -150,80 +116,47 @@ public class Lexer : ILexer
 
     private bool TryReadNumber(List<Token> tokens)
     {
-        if (!char.IsDigit(Peek()))
-        {
-            return false;
-        }
+        if (!char.IsDigit(Peek())) return false;
 
-        int startLine = _line;
-        int startColumn = _column;
-        StringBuilder sb = new();
+        int startLine = _line, startColumn = _column, startPos = _position;
         bool isFloat = false;
 
-        // Integer part
-        while (char.IsDigit(Peek()))
-        {
-            sb.Append(Advance());
-        }
+        while (char.IsDigit(Peek())) Advance();
 
-        // Fractional part
         if (Peek() == '.' && char.IsDigit(Peek(1)))
         {
             isFloat = true;
-            sb.Append(Advance()); // .
-            while (char.IsDigit(Peek()))
-            {
-                sb.Append(Advance());
-            }
+            Advance(); // consume .
+            while (char.IsDigit(Peek())) Advance();
         }
 
-        // Exponent
         if (Peek() is 'e' or 'E')
         {
             isFloat = true;
-            sb.Append(Advance());
-            if (Peek() is '+' or '-')
-            {
-                sb.Append(Advance());
-            }
-
-            while (char.IsDigit(Peek()))
-            {
-                sb.Append(Advance());
-            }
+            Advance(); // consume e/E
+            if (Peek() is '+' or '-') Advance();
+            while (char.IsDigit(Peek())) Advance();
         }
 
-        string value = sb.ToString();
-        TokenType type = isFloat ? TokenType.FloatLiteral : TokenType.IntegerLiteral;
-        tokens.Add(new Token(type, value, startLine, startColumn));
+        string value = _source[startPos.._position];
+        tokens.Add(new Token(isFloat ? TokenType.FloatLiteral : TokenType.IntegerLiteral, value, startLine, startColumn));
         return true;
     }
 
     private bool TryReadString(List<Token> tokens)
     {
-        char c = Peek();
-        if (c != _rules.StringDelimiter && c != _rules.CharDelimiter)
-        {
-            return false;
-        }
+        char delimiter = Peek();
+        if (delimiter != _rules.StringDelimiter && delimiter != _rules.CharDelimiter) return false;
 
-        int startLine = _line;
-        int startColumn = _column;
-        char delimiter = Advance(); // consume opening quote
-        bool isChar = delimiter == _rules.CharDelimiter;
+        int startLine = _line, startColumn = _column;
+        Advance(); // consume opening delimiter
+
         StringBuilder sb = new();
-
         while (!IsAtEnd() && Peek() != delimiter)
         {
             char ch = Advance();
-
-            if (ch == '\\')
+            if (ch == '\\' && !IsAtEnd())
             {
-                if (IsAtEnd())
-                {
-                    break;
-                }
-
                 char escaped = Advance();
                 sb.Append(escaped switch
                 {
@@ -242,91 +175,33 @@ public class Lexer : ILexer
             }
         }
 
-        if (IsAtEnd() || Peek() != delimiter)
+        if (IsAtEnd())
         {
             ReportError("Unterminated string literal", startLine, startColumn);
             return true;
         }
-        Advance(); // consume closing quote
+        Advance(); // consume closing delimiter
 
-        TokenType type = isChar ? TokenType.CharLiteral : TokenType.StringLiteral;
+        TokenType type = delimiter == _rules.CharDelimiter ? TokenType.CharLiteral : TokenType.StringLiteral;
         tokens.Add(new Token(type, sb.ToString(), startLine, startColumn));
         return true;
     }
 
     private bool TryReadOperator(List<Token> tokens)
     {
-        // Try longest operators first
-        foreach ((string? pattern, TokenType type) in _rules.Operators.OrderByDescending(o => o.Pattern.Length))
+        ReadOnlySpan<char> span = _source.AsSpan(_position);
+        foreach (var (pattern, type) in _orderedOperators)
         {
-            if (!MatchString(pattern))
+            if (span.StartsWith(pattern))
             {
-                continue;
+                int startLine = _line, startColumn = _column;
+                _position += pattern.Length;
+                _column += pattern.Length;
+                tokens.Add(new Token(type, pattern, startLine, startColumn));
+                return true;
             }
-
-            int startLine = _line;
-            int startColumn = _column;
-            // Advance past the matched pattern
-            for (int i = 0; i < pattern.Length; i++)
-            {
-                Advance();
-            }
-
-            tokens.Add(new Token(type, pattern, startLine, startColumn));
-            return true;
         }
         return false;
-    }
-
-    private bool TryReadStructural(List<Token> tokens)
-    {
-        char c = Peek();
-        int startLine = _line;
-        int startColumn = _column;
-
-        // Single-char structural tokens not in operators list
-        if (c is '(' or ')' or '[' or ']' or '{' or '}' or ',' or '.' or ':' or ';')
-        {
-            Advance();
-            TokenType type = c switch
-            {
-                '(' => TokenType.LeftParen,
-                ')' => TokenType.RightParen,
-                '[' => TokenType.LeftBracket,
-                ']' => TokenType.RightBracket,
-                '{' => TokenType.LeftBrace,
-                '}' => TokenType.RightBrace,
-                ',' => TokenType.Comma,
-                '.' => TokenType.Dot,
-                ':' => TokenType.Colon,
-                ';' => TokenType.Semicolon,
-                _ => TokenType.Unknown
-            };
-            tokens.Add(new Token(type, c.ToString(), startLine, startColumn));
-            return true;
-        }
-
-        return false;
-    }
-
-    private bool MatchString(string expected)
-    {
-        if (_position + expected.Length > _source.Length)
-        {
-            return false;
-        }
-
-        for (int i = 0; i < expected.Length; i++)
-        {
-            if (_source[_position + i] == expected[i])
-            {
-                continue;
-            }
-
-            return false;
-        }
-
-        return true;
     }
 
     private void ReportError(string message, int line, int column)

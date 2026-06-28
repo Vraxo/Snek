@@ -142,4 +142,35 @@ public class ParserTests
         param.Name.Value.Should().Be("x");
         param.TypeAnnotation?.Name.Value.Should().Be("i32");
     }
+
+    [Fact]
+    public void Parse_AssignmentStatement_CreatesAssignmentStatementNode()
+    {
+        string source = "x = 42;";
+        AstNode ast = ParseSource(source);
+
+        ast.Should().BeOfType<ProgramNode>();
+        ProgramNode program = (ProgramNode)ast;
+        AssignmentStatementNode assign = program.Statements.OfType<AssignmentStatementNode>().Should().ContainSingle().Subject;
+        assign.Name.Value.Should().Be("x");
+        assign.Value.Should().BeOfType<LiteralExpressionNode>();
+    }
+
+    [Fact]
+    public void Parse_CompoundAssignment_DesugarsCorrectly()
+    {
+        string source = "x += 5;";
+        AstNode ast = ParseSource(source);
+
+        ast.Should().BeOfType<ProgramNode>();
+        ProgramNode program = (ProgramNode)ast;
+        AssignmentStatementNode assign = program.Statements.OfType<AssignmentStatementNode>().Should().ContainSingle().Subject;
+        assign.Name.Value.Should().Be("x");
+        assign.Value.Should().BeOfType<BinaryExpressionNode>();
+
+        BinaryExpressionNode binary = (BinaryExpressionNode)assign.Value;
+        binary.Operator.Type.Should().Be(TokenType.Plus);
+        binary.Left.Should().BeOfType<IdentifierExpressionNode>();
+        ((IdentifierExpressionNode)binary.Left).Name.Value.Should().Be("x");
+    }
 }

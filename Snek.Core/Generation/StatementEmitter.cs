@@ -19,9 +19,13 @@ public class StatementEmitter
             .Where(statement => statement is not FunctionDefNode)
             .ToList();
 
+        _generationContext.EmitLine("_start:");
+
         if (topLevelStatements.Count == 0)
         {
-            EmitEmptyEntryPointStub();
+            _generationContext.Emit("xor eax, eax");
+            _generationContext.Emit("ret");
+            _generationContext.EmitLine();
             return;
         }
 
@@ -67,18 +71,13 @@ public class StatementEmitter
             case VariableDeclarationNode variableDeclaration:
                 EmitVariableDeclaration(variableDeclaration);
                 break;
+            case AssignmentStatementNode assignment:
+                EmitAssignmentStatement(assignment);
+                break;
             default:
                 _generationContext.Emit("; unsupported statement");
                 break;
         }
-    }
-
-    private void EmitEmptyEntryPointStub()
-    {
-        _generationContext.EmitLine("_start:");
-        _generationContext.Emit("xor eax, eax");
-        _generationContext.Emit("ret");
-        _generationContext.EmitLine();
     }
 
     private void BeginFunctionPrologue()
@@ -214,5 +213,21 @@ public class StatementEmitter
 
         _generationContext.Emit("pop eax");
         _generationContext.Emit($"mov [ebp-{offset}], eax");
+    }
+
+    private void EmitAssignmentStatement(AssignmentStatementNode assignment)
+    {
+        _expressionEmitter.Emit(assignment.Value);
+
+        if (_generationContext.LocalOffsets.TryGetValue(assignment.Name.Value, out int offset))
+        {
+            _generationContext.Emit("pop eax");
+            _generationContext.Emit($"mov [ebp-{offset}], eax");
+        }
+        else
+        {
+            _generationContext.Emit("; undefined global assignment fallback");
+            _generationContext.Emit("pop eax");
+        }
     }
 }

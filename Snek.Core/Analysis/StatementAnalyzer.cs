@@ -44,6 +44,9 @@ public class StatementAnalyzer
             case VariableDeclarationNode varDecl:
                 AnalyzeVariableDeclaration(varDecl);
                 break;
+            case AssignmentStatementNode assign:
+                AnalyzeAssignment(assign);
+                break;
         }
     }
 
@@ -122,6 +125,30 @@ public class StatementAnalyzer
         }
     }
 
+    private void AnalyzeAssignment(AssignmentStatementNode assign)
+    {
+        SymbolInfo? symbol = _scopeManager.LookupSymbol(assign.Name.Value);
+        if (symbol == null)
+        {
+            _context.Diagnostics.Add(new Diagnostic(
+                _context.SourceName,
+                $"Undefined identifier '{assign.Name.Value}'",
+                assign.Name.Line, assign.Name.Column, DiagnosticSeverity.Error));
+            return;
+        }
+
+        symbol.IsWritten = true;
+
+        TypeKind? valueType = _expressionAnalyzer.AnalyzeExpression(assign.Value);
+        if (valueType != null && symbol.Type != TypeKind.Any && valueType != symbol.Type)
+        {
+            _context.Diagnostics.Add(new Diagnostic(
+                _context.SourceName,
+                $"Type mismatch: cannot assign '{valueType.Value.ToTypeString()}' to variable of type '{symbol.Type.ToTypeString()}'",
+                assign.Name.Line, assign.Name.Column, DiagnosticSeverity.Error));
+        }
+    }
+
     private void AnalyzeIf(IfStatementNode ifs)
     {
         TypeKind? condType = _expressionAnalyzer.AnalyzeExpression(ifs.Condition);
@@ -186,6 +213,7 @@ public class StatementAnalyzer
         foreach (StatementNode stmt in whl.Body)
         {
             AnalyzeStatement(stmt, null);
+            _ = stmt;
         }
     }
 
