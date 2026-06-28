@@ -26,6 +26,9 @@ public class BuiltinFunctionEmitter
             case "pause":
                 EmitPauseCall();
                 return true;
+            case "read_i32":
+                EmitReadI32Call();
+                return true;
             default:
                 return false;
         }
@@ -41,6 +44,20 @@ public class BuiltinFunctionEmitter
     private void EmitPauseCall()
     {
         _generationContext.Emit("call [_getch]");
+        _generationContext.Emit("push eax");
+    }
+
+    private void EmitReadI32Call()
+    {
+        string formatLabel = _generationContext.EnsureFormatString("%d");
+        _generationContext.Emit("sub esp, 4");
+        _generationContext.Emit("mov eax, esp");
+        _generationContext.Emit("push eax");
+        _generationContext.Emit($"push {formatLabel}");
+        _generationContext.Emit("call [scanf]");
+        _generationContext.Emit("add esp, 8");
+        _generationContext.Emit("pop eax");
+        _generationContext.Emit("push eax");
     }
 
     private void EmitPrintCall(CallExpressionNode call)

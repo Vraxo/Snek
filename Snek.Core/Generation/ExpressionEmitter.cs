@@ -131,11 +131,11 @@ public class ExpressionEmitter
 
     private void EmitBinaryOperation(BinaryExpressionNode binary)
     {
-        Emit(binary.Right);
         Emit(binary.Left);
+        Emit(binary.Right);
 
-        _generationContext.Emit("pop ebx");
-        _generationContext.Emit("pop eax");
+        _generationContext.Emit("pop ebx"); // ebx = Right
+        _generationContext.Emit("pop eax"); // eax = Left
 
         switch (binary.Operator.Type)
         {
@@ -151,9 +151,51 @@ public class ExpressionEmitter
                 _generationContext.Emit("imul eax, ebx");
                 break;
 
+            case TokenType.Slash:
+            case TokenType.DoubleSlash:
+                _generationContext.Emit("cdq");
+                _generationContext.Emit("idiv ebx");
+                break;
+
+            case TokenType.Percent:
+                _generationContext.Emit("cdq");
+                _generationContext.Emit("idiv ebx");
+                _generationContext.Emit("mov eax, edx");
+                break;
+
             case TokenType.DoubleEquals:
                 _generationContext.Emit("cmp eax, ebx");
                 _generationContext.Emit("sete al");
+                _generationContext.Emit("movzx eax, al");
+                break;
+
+            case TokenType.NotEquals:
+                _generationContext.Emit("cmp eax, ebx");
+                _generationContext.Emit("setne al");
+                _generationContext.Emit("movzx eax, al");
+                break;
+
+            case TokenType.LessThan:
+                _generationContext.Emit("cmp eax, ebx");
+                _generationContext.Emit("setl al");
+                _generationContext.Emit("movzx eax, al");
+                break;
+
+            case TokenType.GreaterThan:
+                _generationContext.Emit("cmp eax, ebx");
+                _generationContext.Emit("setg al");
+                _generationContext.Emit("movzx eax, al");
+                break;
+
+            case TokenType.LessEqual:
+                _generationContext.Emit("cmp eax, ebx");
+                _generationContext.Emit("setle al");
+                _generationContext.Emit("movzx eax, al");
+                break;
+
+            case TokenType.GreaterEqual:
+                _generationContext.Emit("cmp eax, ebx");
+                _generationContext.Emit("setge al");
                 _generationContext.Emit("movzx eax, al");
                 break;
 

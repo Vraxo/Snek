@@ -242,4 +242,24 @@ public sealed class CodeGeneratorTests
         output.Should().Contain("push 100");         // load 100
         output.Should().Contain("pop eax");          // prepare 100
     }
+
+    [Fact]
+    public void Generate_BinaryComparison_EmitsSetlInstruction()
+    {
+        string source = "1 < 2;";
+        string output = GenerateSource(source);
+
+        output.Should().Contain("cmp eax, ebx");
+        output.Should().Contain("setl al");
+    }
+
+    [Fact]
+    public void Generate_BinaryDivision_EmitsIdivInstruction()
+    {
+        string source = "10 / 2;";
+        string output = GenerateSource(source);
+
+        output.Should().Contain("cdq");
+        output.Should().Contain("idiv ebx");
+    }
 }

@@ -84,6 +84,16 @@ public class StringCollector
             return;
         }
 
+        if (id.Name.Value is "read_i32")
+        {
+            _ctx.ExternalFunctions.Add("scanf");
+            if (!_ctx.StringLiterals.ContainsValue("%d"))
+            {
+                _ctx.StringLiterals[$"fmt{_ctx.StringCounter++}"] = "%d";
+            }
+            return;
+        }
+
         _ctx.ExternalFunctions.Add(id.Name.Value);
     }
 
