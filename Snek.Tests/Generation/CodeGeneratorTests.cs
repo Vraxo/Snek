@@ -322,4 +322,19 @@ public sealed class CodeGeneratorTests
         output.Should().Contain("Point_translate:");   // Mangled method definition
         output.Should().Contain("call Point_translate"); // Implicit self param cdecl call
     }
+
+    [Fact]
+    public void Generate_RawPointerIndex_EmitsCorrectPointers()
+    {
+        string source = """
+            ptr: Any = 1000;
+            ptr[0] = 42;
+            val: i32 = ptr[0];
+            """;
+
+        string output = GenerateSource(source);
+
+        output.Should().Contain("mov [edx + ecx*4], eax"); // raw pointer write
+        output.Should().Contain("mov eax, [eax + ebx*4]"); // raw pointer read
+    }
 }

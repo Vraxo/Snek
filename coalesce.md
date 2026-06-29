@@ -1,16 +1,3 @@
-### `Snek.Core\Class1.cs`
-
-```csharp
-namespace Snek.Core;
-
-public class Class1
-{
-
-}
-```
-
----
-
 ### `Snek.Core\Snek.Core.csproj`
 
 ```xml
@@ -111,7 +98,8 @@ public static class BuiltinFunctionProvider
     private static readonly Dictionary<string, TypeKind> _builtinReturnTypes = new()
     {
         ["print"] = TypeKind.NoneType,
-        ["pause"] = TypeKind.NoneType
+        ["pause"] = TypeKind.NoneType,
+        ["read_i32"] = TypeKind.I32
     };
 
     public static bool IsBuiltin(string name)
@@ -226,6 +214,9 @@ public class CallValidator
 ### `Snek.Core\Analysis\ExpressionAnalyzer.cs`
 
 ```csharp
+using Snek.Core.Ast;
+using Snek.Core.Pipeline;
+
 namespace Snek.Core.Analysis;
 
 public class ExpressionAnalyzer
@@ -282,6 +273,7 @@ public class ExpressionAnalyzer
 ```csharp
 using Snek.Core.Ast;
 using Snek.Core.Diagnoistics;
+using Snek.Core.Pipeline;
 
 namespace Snek.Core.Analysis;
 
@@ -312,6 +304,9 @@ public class ExpressionTypeResolver
             CallExpressionNode call => _callValidator.ValidateAndGetReturnType(call),
             BinaryExpressionNode bin => ResolveBinary(bin),
             UnaryExpressionNode unary => Resolve(unary.Operand),
+            ListExpressionNode => TypeKind.List,
+            IndexExpressionNode => TypeKind.Any,
+            MemberAccessExpressionNode member => ResolveMemberAccess(member),
             _ => TypeKind.Any
         };
     }
@@ -345,6 +340,15 @@ public class ExpressionTypeResolver
         TypeKind? left = Resolve(bin.Left);
         TypeKind? right = Resolve(bin.Right);
         return BinaryOperatorTypeResolver.Resolve(left, right, bin.Operator.Type);
+    }
+
+    private TypeKind ResolveMemberAccess(MemberAccessExpressionNode member)
+    {
+        if (member.Member.Value == "length")
+        {
+            return TypeKind.I32;
+        }
+        return TypeKind.Any;
     }
 }
 ```
@@ -406,6 +410,8 @@ public class Scope
 ### `Snek.Core\Analysis\ScopeManager.cs`
 
 ```csharp
+using Snek.Core.Pipeline;
+
 namespace Snek.Core.Analysis;
 
 public class ScopeManager
@@ -470,7 +476,7 @@ public class ScopeManager
 
     public SymbolInfo? LookupFunction(string name)
     {
-        if (!_globals.TryGetValue(name, out SymbolInfo? info) || info.Type != TypeKind.Function)
+        if (!_globals.TryGetValue(name, out SymbolInfo? info) || (info.Type != TypeKind.Function && info.Type != TypeKind.Class))
         {
             return null;
         }
@@ -534,12 +540,22 @@ public class SemanticAnalyzer : ISemanticAnalyzer
     {
         foreach (StatementNode statement in program.Statements)
         {
-            if (statement is not FunctionDefNode func)
+            if (statement is FunctionDefNode func)
             {
-                continue;
+                RegisterGlobalFunction(func);
             }
-
-            RegisterGlobalFunction(func);
+            else if (statement is ExternFunctionDefNode extFunc)
+            {
+                RegisterExternFunction(extFunc);
+            }
+            else if (statement is ClassDefNode classDef)
+            {
+                RegisterClassConstructor(classDef);
+            }
+            else if (statement is ImplBlockNode implBlock)
+            {
+                RegisterImplMethods(implBlock);
+            }
         }
     }
 
@@ -559,6 +575,63 @@ public class SemanticAnalyzer : ISemanticAnalyzer
             new(TypeKind.Function, func.Name.Line, func.Name.Column, funcType));
     }
 
+    private void RegisterExternFunction(ExternFunctionDefNode extFunc)
+    {
+        TypeKind? returnType = extFunc.ReturnType != null
+            ? TypeKindExtensions.FromString(extFunc.ReturnType.Name.Value)
+            : null;
+
+        FunctionType funcType = new(
+            extFunc.Name.Value,
+            extFunc.Parameters,
+            returnType);
+
+        _scopeManager.AddGlobalSymbol(
+            extFunc.Name.Value,
+            new(TypeKind.Function, extFunc.Name.Line, extFunc.Name.Column, funcType));
+    }
+
+    private void RegisterClassConstructor(ClassDefNode classDef)
+    {
+        List<ParameterNode> constructorParams = [];
+        foreach (FieldNode field in classDef.Fields)
+        {
+            constructorParams.Add(new ParameterNode(field.Name, field.Type, null));
+        }
+
+        FunctionType constructorType = new(
+            classDef.Name.Value,
+            constructorParams,
+            TypeKind.Class);
+
+        _scopeManager.AddGlobalSymbol(
+            classDef.Name.Value,
+            new(TypeKind.Class, classDef.Name.Line, classDef.Name.Column, constructorType));
+    }
+
+    private void RegisterImplMethods(ImplBlockNode implBlock)
+    {
+        string className = implBlock.TargetClass.Value;
+
+        foreach (FunctionDefNode method in implBlock.Methods)
+        {
+            string mangledName = $"{className}_{method.Name.Value}";
+
+            TypeKind? returnType = method.ReturnType != null
+                ? TypeKindExtensions.FromString(method.ReturnType.Name.Value)
+                : null;
+
+            FunctionType funcType = new(
+                mangledName,
+                method.Parameters,
+                returnType);
+
+            _scopeManager.AddGlobalSymbol(
+                mangledName,
+                new(TypeKind.Function, method.Name.Line, method.Name.Column, funcType));
+        }
+    }
+
     private void AnalyzeAllStatements(ProgramNode program)
     {
         foreach (StatementNode statement in program.Statements)
@@ -576,6 +649,7 @@ public class SemanticAnalyzer : ISemanticAnalyzer
 ```csharp
 using Snek.Core.Ast;
 using Snek.Core.Diagnoistics;
+using Snek.Core.Pipeline;
 
 namespace Snek.Core.Analysis;
 
@@ -604,6 +678,13 @@ public class StatementAnalyzer
             case FunctionDefNode func:
                 AnalyzeFunction(func);
                 break;
+            case ExternFunctionDefNode:
+            case ClassDefNode:
+                // Blueprint nodes, nothing to typecheck in body execution.
+                break;
+            case ImplBlockNode implBlock:
+                AnalyzeImplBlock(implBlock);
+                break;
             case ExpressionStatementNode expr:
                 _expressionAnalyzer.AnalyzeExpression(expr.Expression);
                 break;
@@ -618,6 +699,9 @@ public class StatementAnalyzer
                 break;
             case VariableDeclarationNode varDecl:
                 AnalyzeVariableDeclaration(varDecl);
+                break;
+            case AssignmentStatementNode assign:
+                AnalyzeAssignment(assign);
                 break;
         }
     }
@@ -663,6 +747,62 @@ public class StatementAnalyzer
         }
     }
 
+    private void AnalyzeImplBlock(ImplBlockNode implBlock)
+    {
+        foreach (FunctionDefNode method in implBlock.Methods)
+        {
+            _scopeManager.PushScope();
+            try
+            {
+                bool hasSelfParam = method.Parameters.Any(p => p.Name.Value == "self");
+                if (hasSelfParam)
+                {
+                    // Register 'self' as a first-class class type in the local method scope
+                    _scopeManager.AddSymbol("self", new SymbolInfo(TypeKind.Class, method.Name.Line, method.Name.Column));
+                }
+
+                foreach (ParameterNode param in method.Parameters)
+                {
+                    if (param.Name.Value == "self")
+                    {
+                        continue;
+                    }
+
+                    TypeKind paramType = param.TypeAnnotation != null
+                        ? TypeKindExtensions.FromString(param.TypeAnnotation.Name.Value)
+                        : TypeKind.Any;
+                    _scopeManager.AddSymbol(param.Name.Value, new SymbolInfo(paramType, param.Name.Line, param.Name.Column));
+                }
+
+                TypeKind? returnType = method.ReturnType != null
+                    ? TypeKindExtensions.FromString(method.ReturnType.Name.Value)
+                    : null;
+                bool hasReturn = false;
+
+                foreach (StatementNode bodyStmt in method.Body)
+                {
+                    AnalyzeStatement(bodyStmt, returnType);
+                    if (bodyStmt is ReturnStatementNode)
+                    {
+                        hasReturn = true;
+                    }
+                }
+
+                if (returnType.HasValue && returnType != TypeKind.NoneType && !hasReturn && returnType != TypeKind.Any)
+                {
+                    _context.Diagnostics.Add(new Diagnostic(
+                        _context.SourceName,
+                        $"Non-void method '{method.Name.Value}' must return a value",
+                        method.Name.Line, method.Name.Column, DiagnosticSeverity.Error));
+                }
+            }
+            finally
+            {
+                _scopeManager.PopScope();
+            }
+        }
+    }
+
     private void AnalyzeVariableDeclaration(VariableDeclarationNode varDecl)
     {
         TypeKind varType = TypeKindExtensions.FromString(varDecl.Type.Name.Value);
@@ -679,7 +819,7 @@ public class StatementAnalyzer
         if (varDecl.Initializer != null)
         {
             TypeKind? initType = _expressionAnalyzer.AnalyzeExpression(varDecl.Initializer);
-            if (initType != null && initType != varType && varType != TypeKind.Any)
+            if (initType != null && initType != varType && varType != TypeKind.Any && initType != TypeKind.Any)
             {
                 _context.Diagnostics.Add(new Diagnostic(
                     _context.SourceName,
@@ -694,6 +834,39 @@ public class StatementAnalyzer
         if (_scopeManager.IsGlobalScope)
         {
             _scopeManager.AddGlobalSymbol(varDecl.Name.Value, symbolInfo);
+        }
+    }
+
+    private void AnalyzeAssignment(AssignmentStatementNode assign)
+    {
+        TypeKind? targetType = TypeKind.Any;
+
+        if (assign.Target is IdentifierExpressionNode id)
+        {
+            SymbolInfo? symbol = _scopeManager.LookupSymbol(id.Name.Value);
+            if (symbol == null)
+            {
+                _context.Diagnostics.Add(new Diagnostic(
+                    _context.SourceName,
+                    $"Undefined identifier '{id.Name.Value}'",
+                    id.Name.Line, id.Name.Column, DiagnosticSeverity.Error));
+                return;
+            }
+            symbol.IsWritten = true;
+            targetType = symbol.Type;
+        }
+        else if (assign.Target is MemberAccessExpressionNode member)
+        {
+            targetType = _expressionAnalyzer.AnalyzeExpression(member);
+        }
+
+        TypeKind? valueType = _expressionAnalyzer.AnalyzeExpression(assign.Value);
+        if (valueType != null && targetType != null && targetType != TypeKind.Any && valueType != TypeKind.Any && valueType != targetType)
+        {
+            _context.Diagnostics.Add(new Diagnostic(
+                _context.SourceName,
+                $"Type mismatch: cannot assign '{valueType.Value.ToTypeString()}' to variable of type '{targetType.Value.ToTypeString()}'",
+                -1, -1, DiagnosticSeverity.Error));
         }
     }
 
@@ -782,7 +955,7 @@ public class StatementAnalyzer
 
         TypeKind? actualType = _expressionAnalyzer.AnalyzeExpression(ret.Value);
 
-        if (expectedReturnType == null || actualType == null || actualType == expectedReturnType || expectedReturnType == TypeKind.Any)
+        if (expectedReturnType == null || actualType == null || actualType == expectedReturnType || expectedReturnType == TypeKind.Any || actualType == TypeKind.Any)
         {
             return;
         }
@@ -829,7 +1002,8 @@ public enum TypeKind
     Char,       // character
     NoneType,   // None value
     Function,   // Represents a function (metadata contains FunctionType)
-    // TODO: add List, Dict, etc. as needed
+    List,       // Represents a dynamic list / array
+    Class,      // Represents a user-defined class
 }
 ```
 
@@ -838,6 +1012,8 @@ public enum TypeKind
 ### `Snek.Core\Analysis\TypeKindExtensions.cs`
 
 ```csharp
+using Snek.Core.Lexing;
+
 namespace Snek.Core.Analysis;
 
 public static class TypeKindExtensions
@@ -867,6 +1043,8 @@ public static class TypeKindExtensions
             TypeKind.Char => "char",
             TypeKind.NoneType => "NoneType",
             TypeKind.Any => "Any",
+            TypeKind.List => "List",
+            TypeKind.Class => "Class",
             _ => "Unknown"
         };
     }
@@ -882,10 +1060,21 @@ public static class TypeKindExtensions
             "char" => TypeKind.Char,
             "NoneType" => TypeKind.NoneType,
             "Any" => TypeKind.Any,
-            _ => TypeKind.Unknown
+            "List" => TypeKind.List,
+            _ => TypeKind.Class
         };
     }
 }
+```
+
+---
+
+### `Snek.Core\Ast\AssignmentStatementNode.cs`
+
+```csharp
+namespace Snek.Core.Ast;
+
+public record AssignmentStatementNode(ExpressionNode Target, ExpressionNode Value) : StatementNode;
 ```
 
 ---
@@ -924,6 +1113,8 @@ public abstract record AstNode
 ### `Snek.Core\Ast\BinaryExpressionNode.cs`
 
 ```csharp
+using Snek.Core.Lexing;
+
 namespace Snek.Core.Ast;
 
 public record BinaryExpressionNode(ExpressionNode Left, Token Operator, ExpressionNode Right) : ExpressionNode;
@@ -947,6 +1138,18 @@ public record BreakStatementNode : StatementNode;
 namespace Snek.Core.Ast;
 
 public record CallExpressionNode(ExpressionNode Callee, List<ExpressionNode> Arguments) : ExpressionNode;
+```
+
+---
+
+### `Snek.Core\Ast\ClassDefNode.cs`
+
+```csharp
+using Snek.Core.Lexing;
+
+namespace Snek.Core.Ast;
+
+public record ClassDefNode(Token Name, List<FieldNode> Fields) : StatementNode;
 ```
 
 ---
@@ -1001,6 +1204,30 @@ public record ExpressionStatementNode(ExpressionNode Expression) : StatementNode
 
 ---
 
+### `Snek.Core\Ast\ExternFunctionDefNode.cs`
+
+```csharp
+using Snek.Core.Lexing;
+
+namespace Snek.Core.Ast;
+
+public record ExternFunctionDefNode(Token Name, List<ParameterNode> Parameters, TypeNode? ReturnType) : StatementNode;
+```
+
+---
+
+### `Snek.Core\Ast\FieldNode.cs`
+
+```csharp
+using Snek.Core.Lexing;
+
+namespace Snek.Core.Ast;
+
+public record FieldNode(Token Name, TypeNode Type) : AstNode;
+```
+
+---
+
 ### `Snek.Core\Ast\FunctionDefNode.cs`
 
 ```csharp
@@ -1012,8 +1239,7 @@ public record FunctionDefNode(
     Token Name,
     List<ParameterNode> Parameters,
     TypeNode? ReturnType,
-    List<StatementNode> Body,
-    int IndentLevel) : StatementNode;
+    List<StatementNode> Body) : StatementNode;
 ```
 
 ---
@@ -1038,8 +1264,19 @@ namespace Snek.Core.Ast;
 public record IfStatementNode(
     ExpressionNode Condition,
     List<StatementNode> ThenBody,
-    List<StatementNode>? ElseBody,
-    int IndentLevel) : StatementNode;
+    List<StatementNode>? ElseBody) : StatementNode;
+```
+
+---
+
+### `Snek.Core\Ast\ImplBlocknode.cs`
+
+```csharp
+using Snek.Core.Lexing;
+
+namespace Snek.Core.Ast;
+
+public record ImplBlockNode(Token TargetClass, List<FunctionDefNode> Methods) : StatementNode;
 ```
 
 ---
@@ -1185,8 +1422,7 @@ namespace Snek.Core.Ast;
 public record VariableDeclarationNode(
     Token Name,
     TypeNode Type,
-    ExpressionNode? Initializer,
-    int IndentLevel
+    ExpressionNode? Initializer
 ) : StatementNode;
 ```
 
@@ -1199,8 +1435,7 @@ namespace Snek.Core.Ast;
 
 public record WhileStatementNode(
     ExpressionNode Condition,
-    List<StatementNode> Body,
-    int IndentLevel) : StatementNode;
+    List<StatementNode> Body) : StatementNode;
 ```
 
 ---
@@ -1257,7 +1492,10 @@ public sealed class Assembler
 
         try
         {
-            Console.WriteLine("Executing FASM assembler...");
+            Console.ForegroundColor = ConsoleColor.Cyan;
+            Console.Write("[FASM] ");
+            Console.ResetColor();
+            Console.WriteLine($"Assembling {Path.GetFileName(asmPath)}...");
 
             ProcessStartInfo startInfo = CreateProcessStartInfo(fasmPath, asmPath, outputDir);
             SetIncludeEnvironmentVariable(startInfo, fasmPath);
@@ -1273,16 +1511,32 @@ public sealed class Assembler
             string errors = process.StandardError.ReadToEnd();
             process.WaitForExit();
 
-            PrintOutput(output, errors);
-
             if (process.ExitCode == 0)
             {
-                Console.WriteLine("FASM execution successful.");
+                string stats = "";
+                string[] lines = output.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries);
+                foreach (string line in lines)
+                {
+                    if (line.Contains("passes,") && line.Contains("bytes."))
+                    {
+                        stats = $" ({line.Trim()})";
+                        break;
+                    }
+                }
+
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.Write("[FASM] ");
+                Console.ResetColor();
+                Console.WriteLine($"Assembly successful{stats}");
                 return true;
             }
             else
             {
-                Console.Error.WriteLine($"FASM execution failed with exit code {process.ExitCode}.");
+                FormatAndPrintFasmError(output, asmPath, outputDir);
+                if (!string.IsNullOrWhiteSpace(errors))
+                {
+                    Console.Error.Write(errors);
+                }
                 return false;
             }
         }
@@ -1290,6 +1544,86 @@ public sealed class Assembler
         {
             Console.Error.WriteLine($"Error executing FASM: {ex.Message}");
             return false;
+        }
+    }
+
+    private static void FormatAndPrintFasmError(string output, string asmPath, string outputDir)
+    {
+        string[] lines = output.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None);
+
+        string? errorFile = null;
+        int errorLineNum = -1;
+        string? errorMsg = null;
+        string? faultLine = null;
+
+        for (int i = 0; i < lines.Length; i++)
+        {
+            string line = lines[i].Trim();
+
+            if (line.Contains("[") && line.EndsWith("]:"))
+            {
+                int openBracket = line.LastIndexOf('[');
+                int closeBracket = line.LastIndexOf(']');
+                if (openBracket != -1 && closeBracket != -1 && closeBracket > openBracket)
+                {
+                    errorFile = line[..openBracket].Trim();
+                    string lineStr = line.Substring(openBracket + 1, closeBracket - openBracket - 1);
+                    int.TryParse(lineStr, out errorLineNum);
+
+                    if (i + 1 < lines.Length)
+                    {
+                        faultLine = lines[i + 1].Trim();
+                    }
+                }
+            }
+            else if (line.StartsWith("error:"))
+            {
+                errorMsg = line["error:".Length..].Trim();
+            }
+        }
+
+        if (errorFile != null && errorLineNum > 0 && errorMsg != null)
+        {
+            Console.Error.WriteLine();
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.Error.Write("Assembler Error: ");
+            Console.ResetColor();
+            Console.Error.WriteLine(errorMsg);
+
+            Console.ForegroundColor = ConsoleColor.DarkGray;
+            Console.Error.WriteLine($"  --> {errorFile}:{errorLineNum}");
+            Console.Error.WriteLine("   |");
+
+            Console.ForegroundColor = ConsoleColor.Cyan;
+            Console.Error.Write($"{errorLineNum,4} | ");
+            Console.ResetColor();
+
+            string lineContent = faultLine ?? "";
+            string fullPath = Path.Combine(outputDir, errorFile);
+            if (File.Exists(fullPath))
+            {
+                try
+                {
+                    string[] asmLines = File.ReadAllLines(fullPath);
+                    if (errorLineNum <= asmLines.Length)
+                    {
+                        lineContent = asmLines[errorLineNum - 1];
+                    }
+                }
+                catch { }
+            }
+            Console.Error.WriteLine(lineContent);
+
+            Console.ForegroundColor = ConsoleColor.DarkGray;
+            Console.Error.Write("     | ");
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.Error.WriteLine("^");
+            Console.ResetColor();
+            Console.Error.WriteLine();
+        }
+        else
+        {
+            Console.Write(output);
         }
     }
 
@@ -1321,19 +1655,6 @@ public sealed class Assembler
         if (Directory.Exists(includePath))
         {
             startInfo.EnvironmentVariables["INCLUDE"] = includePath;
-        }
-    }
-
-    private static void PrintOutput(string output, string errors)
-    {
-        if (!string.IsNullOrWhiteSpace(output))
-        {
-            Console.Write(output);
-        }
-
-        if (!string.IsNullOrWhiteSpace(errors))
-        {
-            Console.Error.Write(errors);
         }
     }
 }
@@ -1407,7 +1728,10 @@ public class CompilerService
         if (assemblySucceeded)
         {
             string exeOutputPath = DetermineExecutableOutputPath();
-            Console.WriteLine($"Executable created: {exeOutputPath}");
+            Console.ForegroundColor = ConsoleColor.Green;
+            Console.Write("[Snek] ");
+            Console.ResetColor();
+            Console.WriteLine($"Created executable: {exeOutputPath}");
             return (true, asmOutputPath, exeOutputPath);
         }
         else
@@ -1458,7 +1782,10 @@ public class CompilerService
     private void WriteAssemblyFile(string asmOutputPath, string? assemblyContent)
     {
         File.WriteAllText(asmOutputPath, assemblyContent ?? string.Empty);
-        Console.WriteLine($"Assembly generated: {asmOutputPath}");
+        Console.ForegroundColor = ConsoleColor.Green;
+        Console.Write("[Snek] ");
+        Console.ResetColor();
+        Console.WriteLine($"Generated assembly: {asmOutputPath}");
     }
 
     private bool RunAssembler(string asmOutputPath)
@@ -1468,6 +1795,9 @@ public class CompilerService
 
         if (!success)
         {
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.Error.Write("[Snek] ");
+            Console.ResetColor();
             Console.Error.WriteLine("Assembly failed. Check FASM output above.");
         }
 
@@ -1476,6 +1806,9 @@ public class CompilerService
 
     private static void ReportFileNotFound(string sourcePath)
     {
+        Console.ForegroundColor = ConsoleColor.Red;
+        Console.Error.Write("[Snek] ");
+        Console.ResetColor();
         Console.Error.WriteLine($"Error: Input file not found: {sourcePath}");
     }
 
@@ -1638,6 +1971,9 @@ public enum DiagnosticSeverity
 ### `Snek.Core\Generation\BuiltinFunctionEmitter.cs`
 
 ```csharp
+using Snek.Core.Ast;
+using Snek.Core.Lexing;
+
 namespace Snek.Core.Generation;
 
 public class BuiltinFunctionEmitter
@@ -1663,6 +1999,9 @@ public class BuiltinFunctionEmitter
             case "pause":
                 EmitPauseCall();
                 return true;
+            case "read_i32":
+                EmitReadI32Call();
+                return true;
             default:
                 return false;
         }
@@ -1678,6 +2017,20 @@ public class BuiltinFunctionEmitter
     private void EmitPauseCall()
     {
         _generationContext.Emit("call [_getch]");
+        _generationContext.Emit("push eax");
+    }
+
+    private void EmitReadI32Call()
+    {
+        string formatLabel = _generationContext.EnsureFormatString("%d");
+        _generationContext.Emit("sub esp, 4");
+        _generationContext.Emit("mov eax, esp");
+        _generationContext.Emit("push eax");
+        _generationContext.Emit($"push {formatLabel}");
+        _generationContext.Emit("call [scanf]");
+        _generationContext.Emit("add esp, 8");
+        _generationContext.Emit("pop eax");
+        _generationContext.Emit("push eax");
     }
 
     private void EmitPrintCall(CallExpressionNode call)
@@ -1793,12 +2146,14 @@ public class CodeGenerator : ICodeGenerator
     {
         foreach (StatementNode statement in program.Statements)
         {
-            if (statement is not FunctionDefNode function)
+            if (statement is FunctionDefNode function)
             {
-                continue;
+                _statementEmitter.EmitFunction(function);
             }
-
-            _statementEmitter.EmitFunction(function);
+            else if (statement is ImplBlockNode implBlock)
+            {
+                _statementEmitter.EmitImplBlock(implBlock);
+            }
         }
     }
 
@@ -1815,6 +2170,7 @@ public class CodeGenerator : ICodeGenerator
 
 ```csharp
 using Snek.Core.Ast;
+using Snek.Core.Lexing;
 
 namespace Snek.Core.Generation;
 
@@ -1847,6 +2203,18 @@ public class ExpressionEmitter
 
             case BinaryExpressionNode binary:
                 EmitBinaryOperation(binary);
+                break;
+
+            case ListExpressionNode list:
+                EmitListExpression(list);
+                break;
+
+            case IndexExpressionNode index:
+                EmitIndexExpression(index);
+                break;
+
+            case MemberAccessExpressionNode member:
+                EmitMemberAccess(member);
                 break;
 
             default:
@@ -1900,7 +2268,38 @@ public class ExpressionEmitter
             return;
         }
 
+        // Check if the callee is a method call (MemberAccessExpressionNode)!
+        if (call.Callee is MemberAccessExpressionNode member)
+        {
+            if (member.Object is IdentifierExpressionNode objId &&
+                _generationContext.VariableTypes.TryGetValue(objId.Name.Value, out string? className))
+            {
+                string mangledMethodName = $"{className}_{member.Member.Value}";
+
+                // 1. Push arguments from right to left
+                for (int i = call.Arguments.Count - 1; i >= 0; i--)
+                {
+                    Emit(call.Arguments[i]);
+                }
+
+                // 2. Push target object 'self' as the first parameter (i.e. evaluated last)
+                Emit(member.Object);
+
+                _generationContext.Emit($"call {mangledMethodName}");
+                _generationContext.Emit($"add esp, {(call.Arguments.Count + 1) * 4}");
+                _generationContext.Emit("push eax");
+                return;
+            }
+        }
+
         string calleeName = ExtractCalleeName(call);
+
+        if (_generationContext.ClassFields.TryGetValue(calleeName, out List<string>? fields))
+        {
+            EmitClassConstructor(calleeName, fields, call.Arguments);
+            return;
+        }
+
         string callTarget = DetermineCallTarget(calleeName);
 
         EmitArgumentsRightToLeft(call);
@@ -1946,11 +2345,11 @@ public class ExpressionEmitter
 
     private void EmitBinaryOperation(BinaryExpressionNode binary)
     {
-        Emit(binary.Right);
         Emit(binary.Left);
+        Emit(binary.Right);
 
-        _generationContext.Emit("pop ebx");
-        _generationContext.Emit("pop eax");
+        _generationContext.Emit("pop ebx"); // ebx = Right
+        _generationContext.Emit("pop eax"); // eax = Left
 
         switch (binary.Operator.Type)
         {
@@ -1966,9 +2365,51 @@ public class ExpressionEmitter
                 _generationContext.Emit("imul eax, ebx");
                 break;
 
+            case TokenType.Slash:
+            case TokenType.DoubleSlash:
+                _generationContext.Emit("cdq");
+                _generationContext.Emit("idiv ebx");
+                break;
+
+            case TokenType.Percent:
+                _generationContext.Emit("cdq");
+                _generationContext.Emit("idiv ebx");
+                _generationContext.Emit("mov eax, edx");
+                break;
+
             case TokenType.DoubleEquals:
                 _generationContext.Emit("cmp eax, ebx");
                 _generationContext.Emit("sete al");
+                _generationContext.Emit("movzx eax, al");
+                break;
+
+            case TokenType.NotEquals:
+                _generationContext.Emit("cmp eax, ebx");
+                _generationContext.Emit("setne al");
+                _generationContext.Emit("movzx eax, al");
+                break;
+
+            case TokenType.LessThan:
+                _generationContext.Emit("cmp eax, ebx");
+                _generationContext.Emit("setl al");
+                _generationContext.Emit("movzx eax, al");
+                break;
+
+            case TokenType.GreaterThan:
+                _generationContext.Emit("cmp eax, ebx");
+                _generationContext.Emit("setg al");
+                _generationContext.Emit("movzx eax, al");
+                break;
+
+            case TokenType.LessEqual:
+                _generationContext.Emit("cmp eax, ebx");
+                _generationContext.Emit("setle al");
+                _generationContext.Emit("movzx eax, al");
+                break;
+
+            case TokenType.GreaterEqual:
+                _generationContext.Emit("cmp eax, ebx");
+                _generationContext.Emit("setge al");
                 _generationContext.Emit("movzx eax, al");
                 break;
 
@@ -1978,6 +2419,114 @@ public class ExpressionEmitter
         }
 
         _generationContext.Emit("push eax");
+    }
+
+    private void EmitListExpression(ListExpressionNode list)
+    {
+        int elementCount = list.Elements.Count;
+        int byteSize = (elementCount + 1) * 4;
+
+        _generationContext.Emit($"; allocate {byteSize} bytes for array of {elementCount} elements + length header");
+        _generationContext.Emit($"push {byteSize}");
+        _generationContext.Emit("call [malloc]");
+        _generationContext.Emit("add esp, 4");
+
+        // Store the length header at offset 0
+        _generationContext.Emit($"mov dword [eax], {elementCount}");
+
+        // Save the base address onto the stack
+        _generationContext.Emit("push eax");
+
+        for (int i = 0; i < elementCount; i++)
+        {
+            Emit(list.Elements[i]);
+            _generationContext.Emit("pop ebx"); // ebx gets element value
+            _generationContext.Emit("mov eax, [esp]"); // eax gets saved array base address from top of stack
+            _generationContext.Emit($"mov [eax + {4 + (i * 4)}], ebx");
+        }
+
+        // Leave the final base address on the stack as the expression result
+    }
+
+    private void EmitIndexExpression(IndexExpressionNode index)
+    {
+        Emit(index.Target); // evaluates base address and pushes it
+        Emit(index.Index);  // evaluates index and pushes it
+
+        _generationContext.Emit("pop ebx"); // ebx = index
+        _generationContext.Emit("pop eax"); // eax = base address
+
+        bool isHighLevelList = false;
+        if (index.Target is IdentifierExpressionNode id &&
+            _generationContext.VariableTypes.TryGetValue(id.Name.Value, out string? className) &&
+            className == "List" &&
+            !_generationContext.ClassFields.ContainsKey("List"))
+        {
+            isHighLevelList = true;
+        }
+
+        if (isHighLevelList)
+        {
+            _generationContext.Emit("mov eax, [eax + ebx*4 + 4]");
+        }
+        else
+        {
+            _generationContext.Emit("mov eax, [eax + ebx*4]");
+        }
+
+        _generationContext.Emit("push eax");
+    }
+
+    private void EmitMemberAccess(MemberAccessExpressionNode member)
+    {
+        if (member.Member.Value == "length")
+        {
+            Emit(member.Object); // evaluates the array object (pushes base address)
+            _generationContext.Emit("pop eax"); // eax = base address
+            _generationContext.Emit("mov eax, [eax]"); // reads length header at offset 0
+            _generationContext.Emit("push eax");
+            return;
+        }
+
+        if (member.Object is IdentifierExpressionNode id &&
+            _generationContext.VariableTypes.TryGetValue(id.Name.Value, out string? className) &&
+            _generationContext.ClassFields.TryGetValue(className, out List<string>? fields))
+        {
+            int fieldIndex = fields.IndexOf(member.Member.Value);
+            if (fieldIndex != -1)
+            {
+                Emit(member.Object); // evaluates the object pointer (pushes base address)
+                _generationContext.Emit("pop eax"); // eax = base address
+                _generationContext.Emit($"mov eax, [eax + {fieldIndex * 4}]");
+                _generationContext.Emit("push eax");
+                return;
+            }
+        }
+
+        _generationContext.Emit("; unsupported property access");
+        _generationContext.Emit("push 0");
+    }
+
+    private void EmitClassConstructor(string className, List<string> fields, List<ExpressionNode> args)
+    {
+        int fieldCount = fields.Count;
+        int byteSize = fieldCount * 4;
+
+        _generationContext.Emit($"; allocate {byteSize} bytes on heap for constructor {className}");
+        _generationContext.Emit($"push {byteSize}");
+        _generationContext.Emit("call [malloc]");
+        _generationContext.Emit("add esp, 4");
+
+        // Save the base address onto the stack
+        _generationContext.Emit("push eax");
+
+        for (int i = 0; i < Math.Min(fieldCount, args.Count); i++)
+        {
+            Emit(args[i]);
+            _generationContext.Emit("pop ebx"); // ebx gets argument value
+            _generationContext.Emit("mov eax, [esp]"); // eax gets saved heap base address from top of stack
+            _generationContext.Emit($"mov [eax + {i * 4}], ebx");
+        }
     }
 }
 ```
@@ -2044,6 +2593,9 @@ public class GenerationContext
     public int StringCounter { get; set; }
     public Dictionary<string, int> LocalOffsets { get; } = [];
     public int NextLocalOffset { get; set; } = 4;
+    public Dictionary<string, List<string>> ClassFields { get; } = [];
+    public Dictionary<string, string> VariableTypes { get; } = [];
+    public Dictionary<string, int> ParameterOffsets { get; } = [];
 
     public void Reset()
     {
@@ -2055,6 +2607,9 @@ public class GenerationContext
         StringCounter = 0;
         LocalOffsets.Clear();
         NextLocalOffset = 4;
+        ClassFields.Clear();
+        VariableTypes.Clear();
+        ParameterOffsets.Clear();
     }
 
     public string MangleName(string name)
@@ -2292,12 +2847,16 @@ public class StatementEmitter
     public void EmitEntryPoint(IReadOnlyList<StatementNode> statements)
     {
         List<StatementNode> topLevelStatements = statements
-            .Where(statement => statement is not FunctionDefNode)
+            .Where(statement => statement is not FunctionDefNode and not ExternFunctionDefNode and not ClassDefNode and not ImplBlockNode)
             .ToList();
+
+        _generationContext.EmitLine("_start:");
 
         if (topLevelStatements.Count == 0)
         {
-            EmitEmptyEntryPointStub();
+            _generationContext.Emit("xor eax, eax");
+            _generationContext.Emit("ret");
+            _generationContext.EmitLine();
             return;
         }
 
@@ -2305,23 +2864,6 @@ public class StatementEmitter
         ReserveLocalVariablesSpace(topLevelStatements);
         EmitStatements(topLevelStatements);
         EmitFunctionEpilogueWithZeroReturn();
-    }
-
-    public void EmitFunction(FunctionDefNode function)
-    {
-        string mangledName = _generationContext.MangleName(function.Name.Value);
-        _generationContext.EmitLine($"{mangledName}:");
-        BeginFunctionPrologue();
-
-        EmitParameterComments(function.Parameters);
-        EmitStatements(function.Body);
-
-        if (function.ReturnType == null)
-        {
-            _generationContext.Emit("xor eax, eax");
-        }
-
-        EmitFunctionEpilogue();
     }
 
     public void Emit(StatementNode statement)
@@ -2343,18 +2885,133 @@ public class StatementEmitter
             case VariableDeclarationNode variableDeclaration:
                 EmitVariableDeclaration(variableDeclaration);
                 break;
+            case AssignmentStatementNode assignment:
+                EmitAssignmentStatement(assignment);
+                break;
             default:
                 _generationContext.Emit("; unsupported statement");
                 break;
         }
     }
 
-    private void EmitEmptyEntryPointStub()
+    public void EmitFunction(FunctionDefNode function)
     {
-        _generationContext.EmitLine("_start:");
-        _generationContext.Emit("xor eax, eax");
-        _generationContext.Emit("ret");
-        _generationContext.EmitLine();
+        // 1. Save parent scope state
+        Dictionary<string, int> oldLocalOffsets = new(_generationContext.LocalOffsets);
+        int oldNextOffset = _generationContext.NextLocalOffset;
+
+        // 2. Reset scope context for this function
+        _generationContext.LocalOffsets.Clear();
+        _generationContext.NextLocalOffset = 4;
+
+        string mangledName = _generationContext.MangleName(function.Name.Value);
+        _generationContext.EmitLine($"{mangledName}:");
+
+        // Map parameter stack offsets for standard functions
+        _generationContext.ParameterOffsets.Clear();
+        int paramOffset = 8;
+        foreach (ParameterNode parameter in function.Parameters)
+        {
+            _generationContext.ParameterOffsets[parameter.Name.Value] = paramOffset;
+            paramOffset += 4;
+        }
+
+        int localsSize = ComputeLocalVariablesSize(function.Body);
+
+        BeginFunctionPrologue();
+        if (localsSize > 0)
+        {
+            _generationContext.Emit($"sub esp, {localsSize}");
+        }
+
+        EmitParameterComments(function.Parameters);
+        EmitStatements(function.Body);
+
+        if (function.ReturnType == null)
+        {
+            _generationContext.Emit("xor eax, eax");
+        }
+
+        EmitFunctionEpilogue();
+
+        // 3. Restore parent scope state
+        _generationContext.LocalOffsets.Clear();
+        foreach (var kvp in oldLocalOffsets)
+        {
+            _generationContext.LocalOffsets[kvp.Key] = kvp.Value;
+        }
+        _generationContext.NextLocalOffset = oldNextOffset;
+    }
+
+    public void EmitImplBlock(ImplBlockNode implBlock)
+    {
+        string className = implBlock.TargetClass.Value;
+        foreach (var method in implBlock.Methods)
+        {
+            // 1. Save parent scope state
+            Dictionary<string, int> oldLocalOffsets = new(_generationContext.LocalOffsets);
+            int oldNextOffset = _generationContext.NextLocalOffset;
+
+            // 2. Reset scope context for this method
+            _generationContext.LocalOffsets.Clear();
+            _generationContext.NextLocalOffset = 4;
+
+            string mangledName = $"{className}_{method.Name.Value}";
+            _generationContext.EmitLine($"{mangledName}:");
+
+            _generationContext.VariableTypes["self"] = className;
+
+            // Map parameter stack offsets dynamically based on whether it is static or an instance method
+            _generationContext.ParameterOffsets.Clear();
+
+            bool hasSelfParam = method.Parameters.Any(p => p.Name.Value == "self");
+            int paramOffset = 8;
+            if (hasSelfParam)
+            {
+                _generationContext.ParameterOffsets["self"] = 8; // 'self' is always the first parameter
+                paramOffset = 12; // Subsequent parameters start at [ebp+12]
+            }
+            else
+            {
+                paramOffset = 8; // Static methods parameters start at [ebp+8]
+            }
+
+            foreach (var parameter in method.Parameters)
+            {
+                if (parameter.Name.Value == "self")
+                {
+                    continue;
+                }
+                _generationContext.ParameterOffsets[parameter.Name.Value] = paramOffset;
+                paramOffset += 4;
+            }
+
+            int localsSize = ComputeLocalVariablesSize(method.Body);
+
+            BeginFunctionPrologue();
+            if (localsSize > 0)
+            {
+                _generationContext.Emit($"sub esp, {localsSize}");
+            }
+
+            EmitParameterComments(method.Parameters);
+            EmitStatements(method.Body);
+
+            if (method.ReturnType == null)
+            {
+                _generationContext.Emit("xor eax, eax");
+            }
+
+            EmitFunctionEpilogue();
+
+            // 3. Restore parent scope state
+            _generationContext.LocalOffsets.Clear();
+            foreach (var kvp in oldLocalOffsets)
+            {
+                _generationContext.LocalOffsets[kvp.Key] = kvp.Value;
+            }
+            _generationContext.NextLocalOffset = oldNextOffset;
+        }
     }
 
     private void BeginFunctionPrologue()
@@ -2488,8 +3145,88 @@ public class StatementEmitter
         _generationContext.LocalOffsets[variableDeclaration.Name.Value] = offset;
         _generationContext.NextLocalOffset += 4;
 
+        _generationContext.VariableTypes[variableDeclaration.Name.Value] = variableDeclaration.Type.Name.Value;
+
         _generationContext.Emit("pop eax");
         _generationContext.Emit($"mov [ebp-{offset}], eax");
+    }
+
+    private void EmitAssignmentStatement(AssignmentStatementNode assignment)
+    {
+        _expressionEmitter.Emit(assignment.Value);
+
+        if (assignment.Target is IdentifierExpressionNode id)
+        {
+            if (_generationContext.LocalOffsets.TryGetValue(id.Name.Value, out int offset))
+            {
+                _generationContext.Emit("pop eax");
+                _generationContext.Emit($"mov [ebp-{offset}], eax");
+            }
+            else
+            {
+                _generationContext.Emit("; undefined global assignment fallback");
+                _generationContext.Emit("pop eax");
+            }
+        }
+        else if (assignment.Target is MemberAccessExpressionNode member)
+        {
+            if (member.Object is IdentifierExpressionNode objId &&
+                _generationContext.VariableTypes.TryGetValue(objId.Name.Value, out string? className) &&
+                _generationContext.ClassFields.TryGetValue(className, out List<string>? fields))
+            {
+                int fieldIndex = fields.IndexOf(member.Member.Value);
+                if (fieldIndex != -1)
+                {
+                    _expressionEmitter.Emit(member.Object); // evaluates the object pointer (pushes base address)
+                    _generationContext.Emit("pop edx"); // edx = object base address pointer
+                    _generationContext.Emit("pop eax"); // eax = value to assign
+                    _generationContext.Emit($"mov [edx + {fieldIndex * 4}], eax"); // write value directly to field offset!
+                }
+                else
+                {
+                    _generationContext.Emit("; field not found");
+                    _generationContext.Emit("pop eax");
+                }
+            }
+            else
+            {
+                _generationContext.Emit("; unsupported member object assignment");
+                _generationContext.Emit("pop eax");
+            }
+        }
+        else if (assignment.Target is IndexExpressionNode index)
+        {
+            _expressionEmitter.Emit(assignment.Value); // evaluates value to assign
+            _expressionEmitter.Emit(index.Target);     // evaluates base address pointer
+            _expressionEmitter.Emit(index.Index);      // evaluates index
+
+            _generationContext.Emit("pop ecx"); // ecx = index
+            _generationContext.Emit("pop edx"); // edx = base address pointer
+            _generationContext.Emit("pop eax"); // eax = value to assign
+
+            bool isHighLevelList = false;
+            if (index.Target is IdentifierExpressionNode targetId &&
+                _generationContext.VariableTypes.TryGetValue(targetId.Name.Value, out string? className) &&
+                className == "List" &&
+                !_generationContext.ClassFields.ContainsKey("List"))
+            {
+                isHighLevelList = true;
+            }
+
+            if (isHighLevelList)
+            {
+                _generationContext.Emit("mov [edx + ecx*4 + 4], eax");
+            }
+            else
+            {
+                _generationContext.Emit("mov [edx + ecx*4], eax");
+            }
+        }
+        else
+        {
+            _generationContext.Emit("; unsupported assignment target");
+            _generationContext.Emit("pop eax");
+        }
     }
 }
 ```
@@ -2508,6 +3245,7 @@ namespace Snek.Core.Generation;
 public class StringCollector
 {
     private readonly GenerationContext _ctx;
+    private readonly HashSet<string> _localDeclarations = [];
 
     public StringCollector(GenerationContext ctx)
     {
@@ -2516,8 +3254,35 @@ public class StringCollector
 
     public void Collect(AstNode node)
     {
+        CollectLocalDeclarations(node);
         CollectNode(node);
         WalkChildren(node);
+    }
+
+    private void CollectLocalDeclarations(AstNode node)
+    {
+        if (node is ProgramNode program)
+        {
+            foreach (StatementNode statement in program.Statements)
+            {
+                if (statement is FunctionDefNode func)
+                {
+                    _localDeclarations.Add(func.Name.Value);
+                }
+                else if (statement is ClassDefNode classDef)
+                {
+                    _localDeclarations.Add(classDef.Name.Value);
+                }
+                else if (statement is ImplBlockNode implBlock)
+                {
+                    string className = implBlock.TargetClass.Value;
+                    foreach (FunctionDefNode method in implBlock.Methods)
+                    {
+                        _localDeclarations.Add($"{className}_{method.Name.Value}");
+                    }
+                }
+            }
+        }
     }
 
     private void CollectNode(AstNode node)
@@ -2529,6 +3294,15 @@ public class StringCollector
         else if (node is CallExpressionNode call)
         {
             CollectExternalCall(call);
+        }
+        else if (node is ListExpressionNode)
+        {
+            _ctx.ExternalFunctions.Add("malloc");
+        }
+        else if (node is ClassDefNode classDef)
+        {
+            _ctx.ClassFields[classDef.Name.Value] = classDef.Fields.Select(f => f.Name.Value).ToList();
+            _ctx.ExternalFunctions.Add("malloc");
         }
     }
 
@@ -2554,7 +3328,14 @@ public class StringCollector
             return;
         }
 
-        if (id.Name.Value is "print")
+        string name = id.Name.Value;
+
+        if (_localDeclarations.Contains(name))
+        {
+            return; // Local function, constructor, or method call. Bypass DLL linkage.
+        }
+
+        if (name is "print")
         {
             _ctx.ExternalFunctions.Add("printf");
 
@@ -2579,13 +3360,23 @@ public class StringCollector
             return;
         }
 
-        if (id.Name.Value is "pause")
+        if (name is "pause")
         {
             _ctx.ExternalFunctions.Add("_getch");
             return;
         }
 
-        _ctx.ExternalFunctions.Add(id.Name.Value);
+        if (name is "read_i32")
+        {
+            _ctx.ExternalFunctions.Add("scanf");
+            if (!_ctx.StringLiterals.ContainsValue("%d"))
+            {
+                _ctx.StringLiterals[$"fmt{_ctx.StringCounter++}"] = "%d";
+            }
+            return;
+        }
+
+        _ctx.ExternalFunctions.Add(name);
     }
 
     private bool IsStringLiteral(ExpressionNode expr)
@@ -2626,6 +3417,8 @@ public class StringCollector
 ### `Snek.Core\Lexing\ILexer.cs`
 
 ```csharp
+using Snek.Core.Pipeline;
+
 namespace Snek.Core.Lexing;
 
 public interface ILexer
@@ -2639,6 +3432,7 @@ public interface ILexer
 ### `Snek.Core\Lexing\Lexer.cs`
 
 ```csharp
+using Snek.Core.Diagnoistics;
 using Snek.Core.Pipeline;
 using System.Text;
 
@@ -2647,16 +3441,17 @@ namespace Snek.Core.Lexing;
 public class Lexer : ILexer
 {
     private readonly LexerRules _rules;
+    private readonly List<(string Pattern, TokenType Type)> _orderedOperators;
     private string _source = string.Empty;
     private int _position;
     private int _line = 1;
     private int _column = 1;
     private CompilationContext? _context;
-    private readonly Stack<int> _indentStack = new();
 
     public Lexer(LexerRules? rules = null)
     {
         _rules = rules ?? new();
+        _orderedOperators = _rules.Operators.OrderByDescending(o => o.Pattern.Length).ToList();
     }
 
     public IEnumerable<Token> Tokenize(string source, CompilationContext context)
@@ -2666,43 +3461,21 @@ public class Lexer : ILexer
         _line = 1;
         _column = 1;
         _context = context;
-        _indentStack.Clear();
-        _indentStack.Push(0);
 
         List<Token> tokens = [];
 
         while (!IsAtEnd())
         {
             SkipWhitespaceAndComments();
-            if (IsAtEnd())
-            {
-                break;
-            }
+            if (IsAtEnd()) break;
 
             int startLine = _line;
             int startColumn = _column;
 
-            if (TryReadKeywordOrIdentifier(tokens))
-            {
-                continue;
-            }
-
-            if (TryReadNumber(tokens))
-            {
-                continue;
-            }
-
-            if (TryReadString(tokens))
-            {
-                continue;
-            }
-
-            if (TryReadOperator(tokens))
-            {
-                continue;
-            }
-
-            if (TryReadStructural(tokens))
+            if (TryReadKeywordOrIdentifier(tokens) ||
+                TryReadNumber(tokens) ||
+                TryReadString(tokens) ||
+                TryReadOperator(tokens))
             {
                 continue;
             }
@@ -2711,33 +3484,18 @@ public class Lexer : ILexer
             Advance();
         }
 
-        // Emit dedents to close all indentation levels
-        while (_indentStack.Count > 1)
-        {
-            _indentStack.Pop();
-            tokens.Add(new Token(TokenType.Dedent, "", _line, _column));
-        }
-
         tokens.Add(new Token(TokenType.Eof, "", _line, _column));
         return tokens;
     }
 
-    private bool IsAtEnd()
-    {
-        return _position >= _source.Length;
-    }
+    private bool IsAtEnd() => _position >= _source.Length;
 
-    private char Peek(int offset = 0)
-    {
-        return _position + offset < _source.Length
-            ? _source[_position + offset]
-            : '\0';
-    }
+    private char Peek(int offset = 0) =>
+        _position + offset < _source.Length ? _source[_position + offset] : '\0';
 
     private char Advance()
     {
         char c = _source[_position++];
-
         if (c == '\n')
         {
             _line++;
@@ -2747,7 +3505,6 @@ public class Lexer : ILexer
         {
             _column++;
         }
-
         return c;
     }
 
@@ -2756,42 +3513,36 @@ public class Lexer : ILexer
         while (!IsAtEnd())
         {
             char c = Peek();
-
-            if (char.IsWhiteSpace(c) && c != '\n')
+            if (char.IsWhiteSpace(c))
             {
-                Advance(); continue;
+                Advance();
             }
-
-            if (c == '#')
+            else if (c == '#')
             {
-                while (!IsAtEnd() && Peek() != '\n')
-                {
-                    Advance();
-                }
-                continue;
+                while (!IsAtEnd() && Peek() != '\n') Advance();
             }
-
-            break;
+            else
+            {
+                break;
+            }
         }
     }
 
     private bool TryReadKeywordOrIdentifier(List<Token> tokens)
     {
-        if (!char.IsLetter(Peek()) && Peek() != '_' && !_rules.IdentifierStartChars.Contains(Peek()))
+        char first = Peek();
+        if (!char.IsLetter(first) && first != '_' && !_rules.IdentifierStartChars.Contains(first))
         {
             return false;
         }
 
-        int startLine = _line;
-        int startColumn = _column;
-        StringBuilder sb = new();
-
+        int startLine = _line, startColumn = _column, startPos = _position;
         while (!IsAtEnd() && (char.IsLetterOrDigit(Peek()) || Peek() == '_' || _rules.IdentifierContinueChars.Contains(Peek())))
         {
-            sb.Append(Advance());
+            Advance();
         }
 
-        string value = sb.ToString();
+        string value = _source[startPos.._position];
         TokenType type = _rules.Keywords.TryGetValue(value, out TokenType keywordType) ? keywordType : TokenType.Identifier;
         tokens.Add(new Token(type, value, startLine, startColumn));
         return true;
@@ -2799,80 +3550,47 @@ public class Lexer : ILexer
 
     private bool TryReadNumber(List<Token> tokens)
     {
-        if (!char.IsDigit(Peek()))
-        {
-            return false;
-        }
+        if (!char.IsDigit(Peek())) return false;
 
-        int startLine = _line;
-        int startColumn = _column;
-        StringBuilder sb = new();
+        int startLine = _line, startColumn = _column, startPos = _position;
         bool isFloat = false;
 
-        // Integer part
-        while (char.IsDigit(Peek()))
-        {
-            sb.Append(Advance());
-        }
+        while (char.IsDigit(Peek())) Advance();
 
-        // Fractional part
         if (Peek() == '.' && char.IsDigit(Peek(1)))
         {
             isFloat = true;
-            sb.Append(Advance()); // .
-            while (char.IsDigit(Peek()))
-            {
-                sb.Append(Advance());
-            }
+            Advance(); // consume .
+            while (char.IsDigit(Peek())) Advance();
         }
 
-        // Exponent
         if (Peek() is 'e' or 'E')
         {
             isFloat = true;
-            sb.Append(Advance());
-            if (Peek() is '+' or '-')
-            {
-                sb.Append(Advance());
-            }
-
-            while (char.IsDigit(Peek()))
-            {
-                sb.Append(Advance());
-            }
+            Advance(); // consume e/E
+            if (Peek() is '+' or '-') Advance();
+            while (char.IsDigit(Peek())) Advance();
         }
 
-        string value = sb.ToString();
-        TokenType type = isFloat ? TokenType.FloatLiteral : TokenType.IntegerLiteral;
-        tokens.Add(new Token(type, value, startLine, startColumn));
+        string value = _source[startPos.._position];
+        tokens.Add(new Token(isFloat ? TokenType.FloatLiteral : TokenType.IntegerLiteral, value, startLine, startColumn));
         return true;
     }
 
     private bool TryReadString(List<Token> tokens)
     {
-        char c = Peek();
-        if (c != _rules.StringDelimiter && c != _rules.CharDelimiter)
-        {
-            return false;
-        }
+        char delimiter = Peek();
+        if (delimiter != _rules.StringDelimiter && delimiter != _rules.CharDelimiter) return false;
 
-        int startLine = _line;
-        int startColumn = _column;
-        char delimiter = Advance(); // consume opening quote
-        bool isChar = delimiter == _rules.CharDelimiter;
+        int startLine = _line, startColumn = _column;
+        Advance(); // consume opening delimiter
+
         StringBuilder sb = new();
-
         while (!IsAtEnd() && Peek() != delimiter)
         {
             char ch = Advance();
-
-            if (ch == '\\')
+            if (ch == '\\' && !IsAtEnd())
             {
-                if (IsAtEnd())
-                {
-                    break;
-                }
-
                 char escaped = Advance();
                 sb.Append(escaped switch
                 {
@@ -2891,152 +3609,33 @@ public class Lexer : ILexer
             }
         }
 
-        if (IsAtEnd() || Peek() != delimiter)
+        if (IsAtEnd())
         {
             ReportError("Unterminated string literal", startLine, startColumn);
             return true;
         }
-        Advance(); // consume closing quote
+        Advance(); // consume closing delimiter
 
-        TokenType type = isChar ? TokenType.CharLiteral : TokenType.StringLiteral;
+        TokenType type = delimiter == _rules.CharDelimiter ? TokenType.CharLiteral : TokenType.StringLiteral;
         tokens.Add(new Token(type, sb.ToString(), startLine, startColumn));
         return true;
     }
 
     private bool TryReadOperator(List<Token> tokens)
     {
-        // Try longest operators first
-        foreach ((string? pattern, TokenType type) in _rules.Operators.OrderByDescending(o => o.Pattern.Length))
+        ReadOnlySpan<char> span = _source.AsSpan(_position);
+        foreach (var (pattern, type) in _orderedOperators)
         {
-            if (!MatchString(pattern))
+            if (span.StartsWith(pattern))
             {
-                continue;
+                int startLine = _line, startColumn = _column;
+                _position += pattern.Length;
+                _column += pattern.Length;
+                tokens.Add(new Token(type, pattern, startLine, startColumn));
+                return true;
             }
-
-            int startLine = _line;
-            int startColumn = _column;
-            // Advance past the matched pattern
-            for (int i = 0; i < pattern.Length; i++)
-            {
-                Advance();
-            }
-
-            tokens.Add(new Token(type, pattern, startLine, startColumn));
-            return true;
         }
         return false;
-    }
-
-    private bool TryReadStructural(List<Token> tokens)
-    {
-        char c = Peek();
-        int startLine = _line;
-        int startColumn = _column;
-
-        if (c == '\n')
-        {
-            Advance();
-            HandleNewline(tokens, startLine, startColumn);
-            return true;
-        }
-
-        // Single-char structural tokens not in operators list
-        if (c is '(' or ')' or '[' or ']' or '{' or '}' or ',' or '.' or ':')
-        {
-            Advance();
-            TokenType type = c switch
-            {
-                '(' => TokenType.LeftParen,
-                ')' => TokenType.RightParen,
-                '[' => TokenType.LeftBracket,
-                ']' => TokenType.RightBracket,
-                '{' => TokenType.LeftBrace,
-                '}' => TokenType.RightBrace,
-                ',' => TokenType.Comma,
-                '.' => TokenType.Dot,
-                ':' => TokenType.Colon,
-                _ => TokenType.Unknown
-            };
-            tokens.Add(new Token(type, c.ToString(), startLine, startColumn));
-            return true;
-        }
-
-        return false;
-    }
-
-    private void HandleNewline(List<Token> tokens, int line, int column)
-    {
-        if (!_rules.SupportsIndentation)
-        {
-            tokens.Add(new Token(TokenType.Newline, "", line, column));
-            return;
-        }
-
-        // Always emit Newline first, before any Indent/Dedent tokens.
-        // This ensures the parser sees "Statement -> Newline -> Indent -> Block".
-        tokens.Add(new Token(TokenType.Newline, "", line, column));
-
-        // Calculate indentation of next non-empty line
-        int indent = 0;
-        int tempPos = _position;
-        while (tempPos < _source.Length)
-        {
-            char c = _source[tempPos];
-            if (c == ' ') { indent++; tempPos++; }
-            else if (c == '\t') { indent += _rules.TabWidth; tempPos++; }
-            else if (c == '\n') { indent = 0; tempPos++; }
-            else if (c == '#')
-            {
-                while (tempPos < _source.Length && _source[tempPos] != '\n')
-                {
-                    tempPos++;
-                }
-            }
-            else
-            {
-                break;
-            }
-        }
-
-        int currentIndent = _indentStack.Peek();
-
-        if (indent > currentIndent)
-        {
-            _indentStack.Push(indent);
-            tokens.Add(new(TokenType.Indent, "", line, column));
-        }
-        else if (indent < currentIndent)
-        {
-            while (_indentStack.Count > 1 && _indentStack.Peek() > indent)
-            {
-                _indentStack.Pop();
-                tokens.Add(new(TokenType.Dedent, "", line, column));
-            }
-            if (_indentStack.Peek() != indent)
-            {
-                ReportError("Inconsistent indentation", line, column);
-            }
-        }
-    }
-
-    private bool MatchString(string expected)
-    {
-        if (_position + expected.Length > _source.Length)
-        {
-            return false;
-        }
-
-        for (int i = 0; i < expected.Length; i++)
-        {
-            if (_source[_position + i] == expected[i])
-            {
-                continue;
-            }
-
-            return false;
-        }
-
-        return true;
     }
 
     private void ReportError(string message, int line, int column)
@@ -3064,8 +3663,6 @@ public class LexerRules
     public List<(string Pattern, TokenType Type)> Operators { get; } = [];
     public char StringDelimiter { get; set; } = '"';
     public char CharDelimiter { get; set; } = '\'';
-    public bool SupportsIndentation { get; set; } = true;
-    public int TabWidth { get; set; } = 2;
     public bool AllowTrailingCommas { get; set; } = true;
     public HashSet<char> IdentifierStartChars { get; } = ['_'];
     public HashSet<char> IdentifierContinueChars { get; } = [];
@@ -3096,6 +3693,8 @@ public class LexerRules
         Keywords["and"] = TokenType.KeywordAnd;
         Keywords["or"] = TokenType.KeywordOr;
         Keywords["not"] = TokenType.KeywordNot;
+        Keywords["extern"] = TokenType.KeywordExtern;
+        Keywords["impl"] = TokenType.KeywordImpl;
 
         // Default operators (longest first to avoid prefix conflicts)
         Operators.Add(("**=", TokenType.DoubleStarAssign));
@@ -3119,6 +3718,7 @@ public class LexerRules
         Operators.Add(("//", TokenType.DoubleSlash));
         Operators.Add(("<<", TokenType.LeftShift));
         Operators.Add((">>", TokenType.RightShift));
+        Keywords["def"] = TokenType.KeywordDef;
         Operators.Add(("+", TokenType.Plus));
         Operators.Add(("-", TokenType.Minus));
         Operators.Add(("*", TokenType.Star));
@@ -3128,6 +3728,7 @@ public class LexerRules
         Operators.Add(("<", TokenType.LessThan));
         Operators.Add((">", TokenType.GreaterThan));
         Operators.Add((":", TokenType.Colon));
+        Operators.Add((";", TokenType.Semicolon));
         Operators.Add((",", TokenType.Comma));
         Operators.Add((".", TokenType.Dot));
         Operators.Add(("(", TokenType.LeftParen));
@@ -3181,9 +3782,7 @@ public enum TokenType
     // Structural
     Unknown,
     Eof,
-    Newline,
-    Indent,
-    Dedent,
+    Semicolon,
 
     // Keywords
     KeywordFn,
@@ -3210,6 +3809,8 @@ public enum TokenType
     KeywordAnd,
     KeywordOr,
     KeywordNot,
+    KeywordExtern,
+    KeywordImpl,
 
     // Literals
     Identifier,
@@ -3312,32 +3913,39 @@ public class ExpressionParser
 
     private ExpressionNode ParsePrimary()
     {
-        if (_stream.Match(TokenType.Identifier))
-        {
-            Token name = _stream.Previous;
+        ExpressionNode left = ParseBasePrimary();
 
+        while (true)
+        {
             if (_stream.Match(TokenType.LeftParen))
             {
-                return ParseCall(name);
+                left = ParseCall(left);
+            }
+            else if (_stream.Match(TokenType.Dot))
+            {
+                Token member = _stream.Consume(TokenType.Identifier);
+                left = new MemberAccessExpressionNode(left, member);
+            }
+            else if (_stream.Match(TokenType.LeftBracket))
+            {
+                ExpressionNode index = ParseExpression();
+                _stream.Consume(TokenType.RightBracket);
+                left = new IndexExpressionNode(left, index);
             }
             else
             {
-                if (_stream.Match(TokenType.Dot))
-                {
-                    return ParseMemberAccess(name);
-                }
-                else
-                {
-                    if (_stream.Match(TokenType.LeftBracket))
-                    {
-                        return ParseIndex(name);
-                    }
-                    else
-                    {
-                        return new IdentifierExpressionNode(name);
-                    }
-                }
+                break;
             }
+        }
+
+        return left;
+    }
+
+    private ExpressionNode ParseBasePrimary()
+    {
+        if (_stream.Match(TokenType.Identifier))
+        {
+            return new IdentifierExpressionNode(_stream.Previous);
         }
 
         if (_stream.Match(TokenType.StringLiteral) ||
@@ -3382,7 +3990,7 @@ public class ExpressionParser
         return new LiteralExpressionNode(new(TokenType.Unknown, "unknown", -1, -1));
     }
 
-    private CallExpressionNode ParseCall(Token callee)
+    private CallExpressionNode ParseCall(ExpressionNode callee)
     {
         List<ExpressionNode> args = [];
 
@@ -3396,20 +4004,7 @@ public class ExpressionParser
             _stream.Consume(TokenType.RightParen);
         }
 
-        return new(new IdentifierExpressionNode(callee), args);
-    }
-
-    private MemberAccessExpressionNode ParseMemberAccess(Token obj)
-    {
-        Token member = _stream.Consume(TokenType.Identifier);
-        return new MemberAccessExpressionNode(new IdentifierExpressionNode(obj), member);
-    }
-
-    private IndexExpressionNode ParseIndex(Token target)
-    {
-        ExpressionNode index = ParseExpression();
-        _stream.Consume(TokenType.RightBracket);
-        return new(new IdentifierExpressionNode(target), index);
+        return new(callee, args);
     }
 
     private ListExpressionNode ParseListLiteral()
@@ -3540,7 +4135,7 @@ public static class ParserExtensions
         this IEnumerator<Token> tokens,
         params TokenType[] syncPoints)
     {
-        while (tokens.Current?.Type is not (TokenType.Eof or TokenType.Newline or TokenType.Dedent)
+        while (tokens.Current?.Type is not (TokenType.Eof or TokenType.Semicolon or TokenType.RightBrace)
                && !syncPoints.Contains(tokens.Current.Type))
         {
             tokens.MoveNext();
@@ -3571,6 +4166,7 @@ public static class ParserExtensions
 ### `Snek.Core\Parsing\ParserStream.cs`
 
 ```csharp
+using Snek.Core.Diagnoistics;
 using Snek.Core.Lexing;
 using Snek.Core.Pipeline;
 
@@ -3671,15 +4267,11 @@ public class StatementParser
 {
     private readonly ParserStream _stream;
     private readonly ExpressionParser _expressions;
-    private readonly LexerRules _rules;
-    private int _expectedIndent;
 
     public StatementParser(ParserStream stream, ExpressionParser expressions, LexerRules rules)
     {
         _stream = stream;
         _expressions = expressions;
-        _rules = rules;
-        _expectedIndent = 0;
     }
 
     public ProgramNode ParseProgram()
@@ -3688,24 +4280,6 @@ public class StatementParser
 
         while (!_stream.Match(TokenType.Eof))
         {
-            if (_stream.Match(TokenType.Newline))
-            {
-                continue;
-            }
-
-            // Handle top-level indentation adjustments (if any)
-            if (_stream.Match(TokenType.Dedent))
-            {
-                _expectedIndent -= _rules.TabWidth;
-                continue;
-            }
-
-            if (_stream.Match(TokenType.Indent))
-            {
-                _expectedIndent += _rules.TabWidth;
-                continue;
-            }
-
             StatementNode? stmt = ParseStatement();
 
             if (stmt == null)
@@ -3721,6 +4295,21 @@ public class StatementParser
 
     private StatementNode? ParseStatement()
     {
+        if (_stream.Match(TokenType.KeywordImpl))
+        {
+            return ParseImplBlock();
+        }
+
+        if (_stream.Match(TokenType.KeywordClass))
+        {
+            return ParseClassDef();
+        }
+
+        if (_stream.Match(TokenType.KeywordExtern))
+        {
+            return ParseExternFunctionDef();
+        }
+
         if (_stream.Match(TokenType.KeywordFn) || _stream.Match(TokenType.KeywordDef))
         {
             return ParseFunctionDef();
@@ -3738,36 +4327,62 @@ public class StatementParser
 
         if (_stream.Match(TokenType.KeywordReturn))
         {
-            return ParseReturnStatement();
+            StatementNode ret = ParseReturnStatement();
+            _stream.Consume(TokenType.Semicolon);
+            return ret;
         }
 
         if (_stream.Match(TokenType.KeywordPass))
         {
-            ExpectNewline();
+            _stream.Consume(TokenType.Semicolon);
             return new PassStatementNode();
         }
 
         if (_stream.Match(TokenType.KeywordBreak))
         {
-            ExpectNewline();
+            _stream.Consume(TokenType.Semicolon);
             return new BreakStatementNode();
         }
 
         if (_stream.Match(TokenType.KeywordContinue))
         {
-            ExpectNewline();
+            _stream.Consume(TokenType.Semicolon);
             return new ContinueStatementNode();
         }
 
         // Check for variable declaration: identifier ':' type ('=' expression)?
         if (_stream.Current.Type == TokenType.Identifier && _stream.Peek().Type == TokenType.Colon)
         {
-            return ParseVariableDeclaration();
+            StatementNode decl = ParseVariableDeclaration();
+            _stream.Consume(TokenType.Semicolon);
+            return decl;
         }
 
-        ExpressionNode expr = _expressions.ParseExpression();
-        ExpectNewline();
-        return new ExpressionStatementNode(expr);
+        // Parse expression first to support generalized assignment statements (x = val, p.x = val, arr[idx] = val)
+        ExpressionNode leftExpr = _expressions.ParseExpression();
+
+        if (_stream.Current.Type is TokenType.Equals or TokenType.PlusAssign or TokenType.MinusAssign)
+        {
+            TokenType op = _stream.Current.Type;
+            _stream.Advance(); // consume assignment operator
+            ExpressionNode value = _expressions.ParseExpression();
+            _stream.Consume(TokenType.Semicolon);
+
+            if (op == TokenType.Equals)
+            {
+                return new AssignmentStatementNode(leftExpr, value);
+            }
+            else
+            {
+                TokenType binaryOp = op == TokenType.PlusAssign ? TokenType.Plus : TokenType.Minus;
+                Token opToken = new(binaryOp, binaryOp == TokenType.Plus ? "+" : "-", _stream.Current.Line, _stream.Current.Column);
+                BinaryExpressionNode desugared = new(leftExpr, opToken, value);
+                return new AssignmentStatementNode(leftExpr, desugared);
+            }
+        }
+
+        _stream.Consume(TokenType.Semicolon);
+        return new ExpressionStatementNode(leftExpr);
     }
 
     private FunctionDefNode ParseFunctionDef()
@@ -3783,13 +4398,66 @@ public class StatementParser
             returnType = ParseTypeAnnotation();
         }
 
-        _stream.Consume(TokenType.Colon);
-        ExpectNewline();
+        List<StatementNode> body = ParseBlock();
 
-        int bodyIndent = _expectedIndent + _rules.TabWidth;
-        List<StatementNode> body = ParseIndentedBlock();
+        return new(name, parameters, returnType, body);
+    }
 
-        return new(name, parameters, returnType, body, bodyIndent);
+    private ImplBlockNode ParseImplBlock()
+    {
+        Token targetClass = _stream.Consume(TokenType.Identifier);
+        _stream.Consume(TokenType.LeftBrace);
+        List<FunctionDefNode> methods = [];
+
+        while (!_stream.Match(TokenType.RightBrace) && !_stream.Match(TokenType.Eof))
+        {
+            if (_stream.Match(TokenType.KeywordFn) || _stream.Match(TokenType.KeywordDef))
+            {
+                methods.Add(ParseFunctionDef());
+            }
+            else
+            {
+                _stream.Advance();
+            }
+        }
+
+        return new ImplBlockNode(targetClass, methods);
+    }
+
+    private ClassDefNode ParseClassDef()
+    {
+        Token name = _stream.Consume(TokenType.Identifier);
+        _stream.Consume(TokenType.LeftBrace);
+        List<FieldNode> fields = [];
+
+        while (!_stream.Match(TokenType.RightBrace) && !_stream.Match(TokenType.Eof))
+        {
+            Token fieldName = _stream.Consume(TokenType.Identifier);
+            _stream.Consume(TokenType.Colon);
+            TypeNode fieldType = ParseTypeAnnotation();
+            _stream.Consume(TokenType.Semicolon);
+            fields.Add(new FieldNode(fieldName, fieldType));
+        }
+
+        return new ClassDefNode(name, fields);
+    }
+
+    private ExternFunctionDefNode ParseExternFunctionDef()
+    {
+        _stream.Consume(TokenType.KeywordFn);
+        Token name = _stream.Consume(TokenType.Identifier);
+        _stream.Consume(TokenType.LeftParen);
+        List<ParameterNode> parameters = ParseParameters();
+
+        TypeNode? returnType = null;
+
+        if (_stream.Match(TokenType.Arrow))
+        {
+            returnType = ParseTypeAnnotation();
+        }
+
+        _stream.Consume(TokenType.Semicolon);
+        return new ExternFunctionDefNode(name, parameters, returnType);
     }
 
     private VariableDeclarationNode ParseVariableDeclaration()
@@ -3805,8 +4473,7 @@ public class StatementParser
             initializer = _expressions.ParseExpression();
         }
 
-        ExpectNewline();
-        return new VariableDeclarationNode(name, type, initializer, _expectedIndent);
+        return new VariableDeclarationNode(name, type, initializer);
     }
 
     private List<ParameterNode> ParseParameters()
@@ -3884,75 +4551,53 @@ public class StatementParser
     private IfStatementNode ParseIfStatement()
     {
         ExpressionNode condition = _expressions.ParseExpression();
-        _stream.Consume(TokenType.Colon);
-        ExpectNewline();
-
-        int thenIndent = _expectedIndent + _rules.TabWidth;
-        List<StatementNode> thenBody = ParseIndentedBlock();
+        List<StatementNode> thenBody = ParseBlock();
 
         List<StatementNode>? elseBody = null;
 
-        if (!_stream.Match(TokenType.KeywordElse))
+        if (_stream.Match(TokenType.KeywordElse))
         {
-            return new(condition, thenBody, elseBody, thenIndent);
+            if (_stream.Current.Type == TokenType.KeywordIf)
+            {
+                _stream.Advance(); // consume 'if'
+                elseBody = [ParseIfStatement()];
+            }
+            else
+            {
+                elseBody = ParseBlock();
+            }
         }
 
-        _stream.Consume(TokenType.Colon);
-        ExpectNewline();
-
-        _ = _expectedIndent + _rules.TabWidth;
-
-        elseBody = ParseIndentedBlock();
-
-        return new(condition, thenBody, elseBody, thenIndent);
+        return new(condition, thenBody, elseBody);
     }
 
     private WhileStatementNode ParseWhileStatement()
     {
         ExpressionNode condition = _expressions.ParseExpression();
-        _stream.Consume(TokenType.Colon);
-        ExpectNewline();
+        List<StatementNode> body = ParseBlock();
 
-        int bodyIndent = _expectedIndent + _rules.TabWidth;
-        List<StatementNode> body = ParseIndentedBlock();
-
-        return new WhileStatementNode(condition, body, bodyIndent);
+        return new WhileStatementNode(condition, body);
     }
 
     private ReturnStatementNode ParseReturnStatement()
     {
         ExpressionNode? value = null;
 
-        if (_stream.Current.Type is not (TokenType.Newline or TokenType.Eof or TokenType.Dedent))
+        if (_stream.Current.Type != TokenType.Semicolon)
         {
             value = _expressions.ParseExpression();
         }
 
-        ExpectNewline();
         return new ReturnStatementNode(value);
     }
 
-    private List<StatementNode> ParseIndentedBlock()
+    private List<StatementNode> ParseBlock()
     {
-        if (!_stream.Match(TokenType.Indent))
-        {
-            _stream.ReportError(
-                $"Expected indented block but got '{_stream.Current.Value}'",
-                _stream.Current);
-
-            SyncToBlockEnd();
-            return [];
-        }
-
+        _stream.Consume(TokenType.LeftBrace);
         List<StatementNode> statements = [];
 
-        while (!_stream.Match(TokenType.Dedent) && !_stream.Match(TokenType.Eof))
+        while (!_stream.Match(TokenType.RightBrace) && !_stream.Match(TokenType.Eof))
         {
-            if (_stream.Match(TokenType.Newline))
-            {
-                continue;
-            }
-
             StatementNode? stmt = ParseStatement();
 
             if (stmt == null)
@@ -3962,51 +4607,8 @@ public class StatementParser
 
             statements.Add(stmt);
         }
+
         return statements;
-    }
-
-    private void SyncToBlockEnd()
-    {
-        while (_stream.Current.Type is not TokenType.Dedent and
-               not TokenType.Eof)
-        {
-            _stream.Advance();
-        }
-
-        _stream.Match(TokenType.Dedent);
-    }
-
-    private void ExpectNewline()
-    {
-        if (_stream.Match(TokenType.Newline) || _stream.Match(TokenType.Eof))
-        {
-            return;
-        }
-
-        // Inside an indented block, Dedent follows the last statement
-        if (_stream.Current.Type == TokenType.Dedent)
-        {
-            return;
-        }
-
-        _stream.ReportError(
-            $"Expected newline after ':' but got '{_stream.Current.Value}'",
-            _stream.Current);
-
-        // Skip to next line to prevent cascading errors
-        SyncToNewline();
-    }
-
-    private void SyncToNewline()
-    {
-        while (_stream.Current.Type is not TokenType.Newline and
-               not TokenType.Dedent and
-               not TokenType.Eof)
-        {
-            _stream.Advance();
-        }
-
-        _stream.Match(TokenType.Newline);
     }
 }
 ```
@@ -4052,6 +4654,8 @@ public class CompilationContext
 ### `Snek.Core\Pipeline\CompilationResult.cs`
 
 ```csharp
+using Snek.Core.Diagnoistics;
+
 namespace Snek.Core.Pipeline;
 
 public record CompilationResult(string? Output, IReadOnlyList<Diagnostic> Diagnostics)
@@ -4109,17 +4713,15 @@ public class CompilerPipeline
             // Stage 1: Lexing
             if (_options.EnableLogging)
             {
-                Console.WriteLine($"[{sourceName}] Lexing...");
+                LogStage(sourceName, "Lexing");
             }
 
             IEnumerable<Token> tokens = _lexer.Tokenize(source, context);
 
-            // Continue to parsing even with lexer errors — the parser
-            // can often report better, more context-aware diagnostics.
             // Stage 2: Parsing
             if (_options.EnableLogging)
             {
-                Console.WriteLine($"[{sourceName}] Parsing...");
+                LogStage(sourceName, "Parsing");
             }
 
             AstNode ast = _parser.Parse(tokens, context);
@@ -4131,7 +4733,7 @@ public class CompilerPipeline
             // Stage 3: Semantic Analysis
             if (_options.EnableLogging)
             {
-                Console.WriteLine($"[{sourceName}] Analyzing...");
+                LogStage(sourceName, "Analyzing");
             }
 
             _analyzer.Analyze(ast, context);
@@ -4143,7 +4745,7 @@ public class CompilerPipeline
             // Stage 4: Code Generation
             if (_options.EnableLogging)
             {
-                Console.WriteLine($"[{sourceName}] Generating...");
+                LogStage(sourceName, "Generating code for");
             }
 
             string? output = _generator.Generate(ast, context);
@@ -4164,6 +4766,14 @@ public class CompilerPipeline
             return new(context.Diagnostics);
         }
     }
+
+    private static void LogStage(string sourceName, string stage)
+    {
+        Console.ForegroundColor = ConsoleColor.Cyan;
+        Console.Write("[Snek] ");
+        Console.ResetColor();
+        Console.WriteLine($"{stage} '{sourceName}'...");
+    }
 }
 ```
 
@@ -4172,6 +4782,8 @@ public class CompilerPipeline
 ### `Snek.Core\Pipeline\IPipelineStage.cs`
 
 ```csharp
+using Snek.Core.Diagnoistics;
+
 namespace Snek.Core.Pipeline;
 
 public interface IPipelineStage
@@ -4285,6 +4897,110 @@ public class CompilerSettings : CommandSettings
 
 ---
 
+### `Snek\InstallCommand.cs`
+
+```csharp
+using Spectre.Console;
+using Spectre.Console.Cli;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
+
+namespace Snek;
+
+[Description("Installs Snek to the system PATH environment variable for global access")]
+public class InstallCommand : Command<InstallCommand.Settings>
+{
+    public class Settings : CommandSettings { }
+
+    protected override int Execute(CommandContext context, Settings settings, CancellationToken cancellationToken)
+    {
+        string? exePath = Environment.ProcessPath;
+        if (string.IsNullOrEmpty(exePath))
+        {
+            AnsiConsole.MarkupLine("[red]Error: Could not retrieve current executable path.[/]");
+            return 1;
+        }
+
+        string? exeDir = Path.GetDirectoryName(exePath);
+        if (string.IsNullOrEmpty(exeDir))
+        {
+            AnsiConsole.MarkupLine("[red]Error: Could not retrieve executable directory.[/]");
+            return 1;
+        }
+
+        try
+        {
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                InstallWindows(exeDir);
+            }
+            else
+            {
+                InstallUnix(exePath);
+            }
+
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            AnsiConsole.MarkupLine($"[red]Error during installation:[/] {ex.Message}");
+            return 1;
+        }
+    }
+
+    private static void InstallWindows(string exeDir)
+    {
+        string? currentPath = Environment.GetEnvironmentVariable("PATH", EnvironmentVariableTarget.User);
+        string[] paths = (currentPath ?? "").Split(';', StringSplitOptions.RemoveEmptyEntries);
+
+        if (paths.Contains(exeDir, StringComparer.OrdinalIgnoreCase))
+        {
+            AnsiConsole.MarkupLine("[yellow]Snek directory is already registered in user PATH.[/]");
+            return;
+        }
+
+        string newPath = string.IsNullOrEmpty(currentPath) ? exeDir : $"{currentPath};{exeDir}";
+        Environment.SetEnvironmentVariable("PATH", newPath, EnvironmentVariableTarget.User);
+
+        AnsiConsole.MarkupLine("[green]Successfully added Snek directory to your User PATH![/]");
+        AnsiConsole.MarkupLine("[blue]Please restart your terminal/IDE for the changes to take effect.[/]");
+    }
+
+    private static void InstallUnix(string exePath)
+    {
+        string userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        string binDir = Path.Combine(userProfile, ".local", "bin");
+        string linkPath = Path.Combine(binDir, "snek");
+
+        if (!Directory.Exists(binDir))
+        {
+            Directory.CreateDirectory(binDir);
+        }
+
+        if (File.Exists(linkPath))
+        {
+            AnsiConsole.MarkupLine("[yellow]Global Snek command '~/.local/bin/snek' already exists. Recreating it...[/]");
+            File.Delete(linkPath);
+        }
+
+        try
+        {
+            File.CreateSymbolicLink(linkPath, exePath);
+            AnsiConsole.MarkupLine($"[green]Successfully symlinked Snek to '{linkPath}'![/]");
+        }
+        catch
+        {
+            File.Copy(exePath, linkPath, overwrite: true);
+            AnsiConsole.MarkupLine($"[green]Successfully copied Snek to '{linkPath}'![/]");
+        }
+
+        AnsiConsole.MarkupLine("[blue]Ensure '~/.local/bin' is included in your shell's PATH variable (e.g., in ~/.bashrc or ~/.zshrc).[/]");
+    }
+}
+```
+
+---
+
 ### `Snek\Program.cs`
 
 ```csharp
@@ -4296,11 +5012,16 @@ public class Program
 {
     public static int Main(string[] args)
     {
-        CommandApp<CompileCommand> app = new();
+        CommandApp app = new();
+        app.SetDefaultCommand<CompileCommand>();
+
         app.Configure(config =>
         {
             config.SetApplicationName("snek");
             config.SetApplicationVersion("1.0.0");
+
+            config.AddCommand<InstallCommand>("install");
+            config.AddCommand<UninstallCommand>("uninstall");
         });
 
         return app.Run(args);
@@ -4331,6 +5052,104 @@ public class Program
 	</ItemGroup>
 
 </Project>
+```
+
+---
+
+### `Snek\UninstallCommand.cs`
+
+```csharp
+using Spectre.Console;
+using Spectre.Console.Cli;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
+
+namespace Snek;
+
+[Description("Removes Snek from the system PATH environment variable")]
+public class UninstallCommand : Command<UninstallCommand.Settings>
+{
+    public class Settings : CommandSettings { }
+
+    protected override int Execute(CommandContext context, Settings settings, CancellationToken cancellationToken)
+    {
+        string? exePath = Environment.ProcessPath;
+        if (string.IsNullOrEmpty(exePath))
+        {
+            AnsiConsole.MarkupLine("[red]Error: Could not retrieve current executable path.[/]");
+            return 1;
+        }
+
+        string? exeDir = Path.GetDirectoryName(exePath);
+        if (string.IsNullOrEmpty(exeDir))
+        {
+            AnsiConsole.MarkupLine("[red]Error: Could not retrieve executable directory.[/]");
+            return 1;
+        }
+
+        try
+        {
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                UninstallWindows(exeDir);
+            }
+            else
+            {
+                UninstallUnix();
+            }
+
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            AnsiConsole.MarkupLine($"[red]Error during uninstallation:[/] {ex.Message}");
+            return 1;
+        }
+    }
+
+    private static void UninstallWindows(string exeDir)
+    {
+        string? currentPath = Environment.GetEnvironmentVariable("PATH", EnvironmentVariableTarget.User);
+        if (string.IsNullOrEmpty(currentPath))
+        {
+            AnsiConsole.MarkupLine("[yellow]No User PATH environment variables found.[/]");
+            return;
+        }
+
+        string[] paths = currentPath.Split(';', StringSplitOptions.RemoveEmptyEntries);
+        List<string> filteredPaths = paths
+            .Where(p => !string.Equals(p.Trim(), exeDir.Trim(), StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        if (paths.Length == filteredPaths.Count)
+        {
+            AnsiConsole.MarkupLine("[yellow]Snek directory was not found in your User PATH.[/]");
+            return;
+        }
+
+        string newPath = string.Join(";", filteredPaths);
+        Environment.SetEnvironmentVariable("PATH", newPath, EnvironmentVariableTarget.User);
+
+        AnsiConsole.MarkupLine("[green]Successfully removed Snek directory from your User PATH![/]");
+        AnsiConsole.MarkupLine("[blue]Please restart your active terminal sessions for the changes to take effect.[/]");
+    }
+
+    private static void UninstallUnix()
+    {
+        string userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        string linkPath = Path.Combine(userProfile, ".local", "bin", "snek");
+
+        if (File.Exists(linkPath))
+        {
+            File.Delete(linkPath);
+            AnsiConsole.MarkupLine($"[green]Successfully deleted '{linkPath}'![/]");
+        }
+        else
+        {
+            AnsiConsole.MarkupLine("[yellow]Global Snek command '~/.local/bin/snek' was not found.[/]");
+        }
+    }
+}
 ```
 
 ---
@@ -4437,6 +5256,7 @@ public static class TestHelpers
 ```csharp
 using FluentAssertions;
 using Snek.Core.Analysis;
+using Snek.Core.Ast;
 using Snek.Core.Lexing;
 using Snek.Core.Parsing;
 using Snek.Core.Pipeline;
@@ -4467,9 +5287,9 @@ public class SemanticAnalyzerTests
     public void Analyze_UndefinedIdentifier_ReportsError()
     {
         string source = """
-            fn test():
-              return undefinedVar
-
+            fn test() {
+              return undefinedVar;
+            }
             """;
         AnalyzeSource(source);
 
@@ -4480,9 +5300,9 @@ public class SemanticAnalyzerTests
     public void Analyze_TypeMismatch_ReturnsError()
     {
         string source = """
-            fn foo() -> i32:
-              return "wrong"
-
+            fn foo() -> i32 {
+              return "wrong";
+            }
             """;
         AnalyzeSource(source);
 
@@ -4493,9 +5313,9 @@ public class SemanticAnalyzerTests
     public void Analyze_NonVoidFunctionWithoutReturn_ReportsError()
     {
         string source = """
-            fn foo() -> i32:
-              pass
-
+            fn foo() -> i32 {
+              pass;
+            }
             """;
         AnalyzeSource(source);
 
@@ -4507,10 +5327,11 @@ public class SemanticAnalyzerTests
     public void Analyze_IfConditionNotBool_ReportsError()
     {
         string source = """
-            fn test():
-              if "string":
-                pass
-
+            fn test() {
+              if "string" {
+                pass;
+              }
+            }
             """;
         AnalyzeSource(source);
 
@@ -4521,10 +5342,11 @@ public class SemanticAnalyzerTests
     public void Analyze_WhileConditionNotBool_ReportsError()
     {
         string source = """
-            fn test():
-              while 42:
-                pass
-
+            fn test() {
+              while 42 {
+                pass;
+              }
+            }
             """;
         AnalyzeSource(source);
 
@@ -4535,17 +5357,16 @@ public class SemanticAnalyzerTests
     public void Analyze_FunctionCallWithWrongArity_ReportsError()
     {
         string source = """
-            fn foo(x: int):
-              pass
+            fn foo(x: int) {
+              pass;
+            }
 
-            fn test():
-              return foo()
-
+            fn test() {
+              return foo();
+            }
             """;
         AnalyzeSource(source);
 
-        // Since foo is called with wrong arity (0 args instead of 1)
-        // The error should mention arity mismatch
         _context.Diagnostics.Should().ContainSingle(d =>
             d.IsError && d.Message.Contains("expects 1 args, got 0"));
     }
@@ -4554,17 +5375,17 @@ public class SemanticAnalyzerTests
     public void Analyze_ValidFunctionCall_ResolvesReturnType()
     {
         string source = """
-            fn foo() -> i32:
-              return 42
+            fn foo() -> i32 {
+              return 42;
+            }
 
-            fn test() -> i32:
-              return foo()
-
+            fn test() -> i32 {
+              return foo();
+            }
             """;
 
         AnalyzeSource(source);
 
-        // Resolve the type of a call to foo(), which should be i32
         CallExpressionNode callExpr = new(
             new IdentifierExpressionNode(new(TokenType.Identifier, "foo", 1, 1)),
             []);
@@ -4579,9 +5400,9 @@ public class SemanticAnalyzerTests
     public void Analyze_BinaryExpression_PromotesTypes()
     {
         string source = """
-            fn test() -> f64:
-              return 1 + 2.5
-
+            fn test() -> f64 {
+              return 1 + 2.5;
+            }
             """;
 
         AnalyzeSource(source);
@@ -4593,9 +5414,21 @@ public class SemanticAnalyzerTests
     public void Analyze_ComparisonExpression_ReturnsBool()
     {
         string source = """
-            fn test() -> bool:
-              return 5 > 3
+            fn test() -> bool {
+              return 5 > 3;
+            }
+            """;
 
+        AnalyzeSource(source);
+
+        _context.Diagnostics.Should().NotContain(d => d.IsError);
+    }
+
+    [Fact]
+    public void Analyze_ListVariable_TypeChecksSuccessfully()
+    {
+        string source = """
+            arr: List<i32> = [10, 20, 30];
             """;
 
         AnalyzeSource(source);
@@ -4647,7 +5480,7 @@ public sealed class CodeGeneratorTests
     [Fact]
     public void Generate_EmptyProgram_ProducesValidHeader()
     {
-        string source = "pass";
+        string source = "pass;";
 
         string output = GenerateSource(source);
 
@@ -4659,7 +5492,7 @@ public sealed class CodeGeneratorTests
     [Fact]
     public void Generate_StringLiteral_EmitsDataSection()
     {
-        string source = "print(\"hello\")";
+        string source = "print(\"hello\");";
         string output = GenerateSource(source);
 
         output.Should().Contain("section '.data'");
@@ -4669,7 +5502,7 @@ public sealed class CodeGeneratorTests
     [Fact]
     public void Generate_FunctionCall_EmitsCallInstruction()
     {
-        string source = "print(\"test\")";
+        string source = "print(\"test\");";
         string output = GenerateSource(source);
 
         output.Should().Contain("call [printf]");
@@ -4678,7 +5511,7 @@ public sealed class CodeGeneratorTests
     [Fact]
     public void Generate_IntegerLiteral_PushesValue()
     {
-        string source = "42";
+        string source = "42;";
         string output = GenerateSource(source);
 
         output.Should().Contain("push 42");
@@ -4687,7 +5520,7 @@ public sealed class CodeGeneratorTests
     [Fact]
     public void Generate_BinaryAddition_EmitsAddInstruction()
     {
-        string source = "1 + 2";
+        string source = "1 + 2;";
         string output = GenerateSource(source);
 
         output.Should().Contain("add eax, ebx");
@@ -4697,8 +5530,9 @@ public sealed class CodeGeneratorTests
     public void Generate_IfStatement_EmitsConditionalJump()
     {
         string source = """
-            if true:
-              x = 1
+            if true {
+              x = 1;
+            }
             """;
 
         string output = GenerateSource(source);
@@ -4712,8 +5546,9 @@ public sealed class CodeGeneratorTests
     public void Generate_WhileLoop_EmitsLoopStructure()
     {
         string source = """
-            while x < 10:
-              x = x + 1
+            while x < 10 {
+              x = x + 1;
+            }
             """;
 
         string output = GenerateSource(source);
@@ -4727,8 +5562,9 @@ public sealed class CodeGeneratorTests
     public void Generate_ReturnStatement_EmitsReturnSequence()
     {
         string source = """
-            fn foo() -> int:
-              return 42
+            fn foo() -> int {
+              return 42;
+            }
             """;
 
         string output = GenerateSource(source);
@@ -4740,7 +5576,7 @@ public sealed class CodeGeneratorTests
     [Fact]
     public void Generate_ExternalFunction_DeclaredInImportSection()
     {
-        string source = "customFunc()";
+        string source = "customFunc();";
 
         string output = GenerateSource(source);
 
@@ -4752,8 +5588,8 @@ public sealed class CodeGeneratorTests
     public void DeclareAndUseVariable_ShouldStoreAndLoadValue()
     {
         string source = """
-            x: i32 = 42
-            print(x)
+            x: i32 = 42;
+            print(x);
             """;
 
         string output = GenerateSource(source);
@@ -4767,8 +5603,8 @@ public sealed class CodeGeneratorTests
     public void StringVariable_ShouldStoreString()
     {
         string source = """
-            msg: str = "Hello"
-            print(msg)
+            msg: str = "Hello";
+            print(msg);
             """;
 
         string output = GenerateSource(source);
@@ -4782,9 +5618,9 @@ public sealed class CodeGeneratorTests
     public void MultipleVariables_ShouldGetDifferentOffsets()
     {
         string source = """
-            a: i32 = 1
-            b: i32 = 2
-            c: i32 = a + b
+            a: i32 = 1;
+            b: i32 = 2;
+            c: i32 = a + b;
             """;
 
         string output = GenerateSource(source);
@@ -4797,7 +5633,7 @@ public sealed class CodeGeneratorTests
     [Fact]
     public void Generator_VariableWithoutInitializer_ShouldDefaultToZero()
     {
-        string source = "x: i32";
+        string source = "x: i32;";
 
         string output = GenerateSource(source);
 
@@ -4808,7 +5644,7 @@ public sealed class CodeGeneratorTests
     [Fact]
     public void Generate_TypeMismatch_ShouldReportError()
     {
-        string source = "x: i32 = \"hello\"";
+        string source = "x: i32 = \"hello\";";
         Lexer lexer = new();
         Parser parser = new();
         SemanticAnalyzer analyzer = new();
@@ -4824,7 +5660,7 @@ public sealed class CodeGeneratorTests
     [Fact]
     public void Generate_UndefinedVariable_ShouldReportError()
     {
-        string source = "print(undefinedVar)";
+        string source = "print(undefinedVar);";
         Lexer lexer = new();
         Parser parser = new();
         SemanticAnalyzer analyzer = new();
@@ -4835,6 +5671,116 @@ public sealed class CodeGeneratorTests
         analyzer.Analyze(ast, context);
 
         context.Diagnostics.Should().Contain(d => d.Message.Contains("Undefined identifier"));
+    }
+
+    [Fact]
+    public void Generate_VariableAssignment_UpdatesValue()
+    {
+        string source = """
+            x: i32 = 42;
+            x = 100;
+            """;
+
+        string output = GenerateSource(source);
+
+        output.Should().Contain("mov [ebp-4], eax"); // initial store
+        output.Should().Contain("push 100");         // load 100
+        output.Should().Contain("pop eax");          // prepare 100
+    }
+
+    [Fact]
+    public void Generate_BinaryComparison_EmitsSetlInstruction()
+    {
+        string source = "1 < 2;";
+        string output = GenerateSource(source);
+
+        output.Should().Contain("cmp eax, ebx");
+        output.Should().Contain("setl al");
+    }
+
+    [Fact]
+    public void Generate_BinaryDivision_EmitsIdivInstruction()
+    {
+        string source = "10 / 2;";
+        string output = GenerateSource(source);
+
+        output.Should().Contain("cdq");
+        output.Should().Contain("idiv ebx");
+    }
+
+    [Fact]
+    public void Generate_ListProperty_EmitsLengthHeaderAndLookup()
+    {
+        string source = """
+            arr: List<i32> = [10, 20];
+            len: i32 = arr.length;
+            """;
+
+        string output = GenerateSource(source);
+
+        output.Should().Contain("mov dword [eax], 2"); // Alloc header store length
+        output.Should().Contain("mov eax, [eax]");     // Property load header lookup
+    }
+
+    [Fact]
+    public void Generate_ClassInstantiator_EmitsHeapAllocAndFieldWrites()
+    {
+        string source = """
+            class Point {
+              x: i32;
+              y: i32;
+            }
+
+            p: Point = Point(10, 20);
+            p.x = 42;
+            """;
+
+        string output = GenerateSource(source);
+
+        output.Should().Contain("push 8");             // allocate 8 bytes (2 fields)
+        output.Should().Contain("call [malloc]");
+        output.Should().Contain("mov [eax + 0], ebx"); // write Point.x (10)
+        output.Should().Contain("mov [edx + 0], eax"); // assign p.x = 42
+    }
+
+    [Fact]
+    public void Generate_RustStyleImpl_CompilesMethodsAndCallWithSelf()
+    {
+        string source = """
+            class Point {
+              x: i32;
+              y: i32;
+            }
+
+            impl Point {
+              fn translate(self, dx: i32) {
+                self.x = self.x + dx;
+              }
+            }
+
+            p: Point = Point(10, 20);
+            p.translate(35);
+            """;
+
+        string output = GenerateSource(source);
+
+        output.Should().Contain("Point_translate:");   // Mangled method definition
+        output.Should().Contain("call Point_translate"); // Implicit self param cdecl call
+    }
+
+    [Fact]
+    public void Generate_RawPointerIndex_EmitsCorrectPointers()
+    {
+        string source = """
+            ptr: Any = 1000;
+            ptr[0] = 42;
+            val: i32 = ptr[0];
+            """;
+
+        string output = GenerateSource(source);
+
+        output.Should().Contain("mov [edx + ecx*4], eax"); // raw pointer write
+        output.Should().Contain("mov eax, [eax + ebx*4]"); // raw pointer read
     }
 }
 ```
@@ -4927,19 +5873,6 @@ public class LexerTests
     }
 
     [Fact]
-    public void Tokenize_WithIndentation_EmitsIndentDedentTokens()
-    {
-        string source = """
-            fn main():
-              x = 1
-            """;
-        List<Token> tokens = [.. _lexer.Tokenize(source, _context)];
-
-        tokens.Should().Contain(t => t.Type == TokenType.Indent);
-        tokens.Should().Contain(t => t.Type == TokenType.Dedent);
-    }
-
-    [Fact]
     public void Tokenize_UnterminatedString_ReportsError()
     {
         List<Token> tokens = [.. _lexer.Tokenize("\"unterminated", _context)];
@@ -4963,6 +5896,10 @@ public class LexerTests
 
 ```csharp
 using FluentAssertions;
+using Snek.Core.Ast;
+using Snek.Core.Lexing;
+using Snek.Core.Parsing;
+using Snek.Core.Pipeline;
 
 namespace Snek.Tests.Parsing;
 
@@ -4988,8 +5925,9 @@ public class ParserTests
     public void Parse_FunctionDef_CreatesFunctionDefNode()
     {
         string source = """
-            fn main():
-              pass
+            fn main() {
+              pass;
+            }
             """;
 
         AstNode ast = ParseSource(source);
@@ -5005,8 +5943,9 @@ public class ParserTests
     public void Parse_IfStatement_CreatesIfStatementNode()
     {
         string source = """
-            if true:
-              pass
+            if true {
+              pass;
+            }
             """;
 
         AstNode ast = ParseSource(source);
@@ -5021,8 +5960,9 @@ public class ParserTests
     public void Parse_WhileStatement_CreatesWhileStatementNode()
     {
         string source = """
-            while x < 10:
-              x = x + 1
+            while x < 10 {
+              x = x + 1;
+            }
             """;
 
         AstNode ast = ParseSource(source);
@@ -5037,8 +5977,9 @@ public class ParserTests
     public void Parse_ReturnStatement_CreatesReturnStatementNode()
     {
         string source = """
-            fn foo() -> i32:
-              return 42
+            fn foo() -> i32 {
+              return 42;
+            }
             """;
 
         AstNode ast = ParseSource(source);
@@ -5053,7 +5994,7 @@ public class ParserTests
     [Fact]
     public void Parse_CallExpression_CreatesCallExpressionNode()
     {
-        string source = "print(\"hello\")";
+        string source = "print(\"hello\");";
         AstNode ast = ParseSource(source);
 
         ast.Should().BeOfType<ProgramNode>();
@@ -5066,7 +6007,7 @@ public class ParserTests
     [Fact]
     public void Parse_BinaryExpression_CreatesBinaryExpressionNode()
     {
-        string source = "x + y";
+        string source = "x + y;";
         AstNode ast = ParseSource(source);
 
         ast.Should().BeOfType<ProgramNode>();
@@ -5080,7 +6021,7 @@ public class ParserTests
     public void Parse_InvalidSyntax_ReportsError()
     {
         string source = "fn invalid(:";
-        AstNode ast = ParseSource(source);
+        _ = ParseSource(source);
 
         _context.Diagnostics.Should().Contain(d => d.IsError);
     }
@@ -5088,7 +6029,7 @@ public class ParserTests
     [Fact]
     public void Parse_ParameterWithTypeAnnotation_ParsesCorrectly()
     {
-        string source = "fn foo(x: i32):\n  pass";
+        string source = "fn foo(x: i32) { pass; }";
         AstNode ast = ParseSource(source);
 
         ast.Should().BeOfType<ProgramNode>();
@@ -5097,6 +6038,92 @@ public class ParserTests
         ParameterNode param = func.Parameters.Should().ContainSingle().Subject;
         param.Name.Value.Should().Be("x");
         param.TypeAnnotation?.Name.Value.Should().Be("i32");
+    }
+
+    [Fact]
+    public void Parse_AssignmentStatement_CreatesAssignmentStatementNode()
+    {
+        string source = "x = 42;";
+        AstNode ast = ParseSource(source);
+
+        ast.Should().BeOfType<ProgramNode>();
+        ProgramNode program = (ProgramNode)ast;
+        AssignmentStatementNode assign = program.Statements.OfType<AssignmentStatementNode>().Should().ContainSingle().Subject;
+        assign.Target.Should().BeOfType<IdentifierExpressionNode>();
+        assign.Value.Should().BeOfType<LiteralExpressionNode>();
+    }
+
+    [Fact]
+    public void Parse_CompoundAssignment_DesugarsCorrectly()
+    {
+        string source = "x += 5;";
+        AstNode ast = ParseSource(source);
+
+        ast.Should().BeOfType<ProgramNode>();
+        ProgramNode program = (ProgramNode)ast;
+        AssignmentStatementNode assign = program.Statements.OfType<AssignmentStatementNode>().Should().ContainSingle().Subject;
+        assign.Target.Should().BeOfType<IdentifierExpressionNode>();
+        assign.Value.Should().BeOfType<BinaryExpressionNode>();
+
+        BinaryExpressionNode binary = (BinaryExpressionNode)assign.Value;
+        binary.Operator.Type.Should().Be(TokenType.Plus);
+        binary.Left.Should().BeOfType<IdentifierExpressionNode>();
+        ((IdentifierExpressionNode)binary.Left).Name.Value.Should().Be("x");
+    }
+
+    [Fact]
+    public void Parse_ExternFunction_CreatesExternFunctionDefNode()
+    {
+        string source = "extern fn system(cmd: str) -> i32;";
+        AstNode ast = ParseSource(source);
+
+        ast.Should().BeOfType<ProgramNode>();
+        ProgramNode program = (ProgramNode)ast;
+        ExternFunctionDefNode extFunc = program.Statements.OfType<ExternFunctionDefNode>().Should().ContainSingle().Subject;
+        extFunc.Name.Value.Should().Be("system");
+        extFunc.Parameters.Should().ContainSingle();
+        extFunc.Parameters[0].Name.Value.Should().Be("cmd");
+        extFunc.ReturnType?.Name.Value.Should().Be("str");
+    }
+
+    [Fact]
+    public void Parse_ClassDef_CreatesClassDefNode()
+    {
+        string source = """
+            class Point {
+              x: i32;
+              y: i32;
+            }
+            """;
+        AstNode ast = ParseSource(source);
+
+        ast.Should().BeOfType<ProgramNode>();
+        ProgramNode program = (ProgramNode)ast;
+        ClassDefNode classDef = program.Statements.OfType<ClassDefNode>().Should().ContainSingle().Subject;
+        classDef.Name.Value.Should().Be("Point");
+        classDef.Fields.Should().HaveCount(2);
+        classDef.Fields[0].Name.Value.Should().Be("x");
+        classDef.Fields[1].Name.Value.Should().Be("y");
+    }
+
+    [Fact]
+    public void Parse_ImplBlock_CreatesImplBlockNode()
+    {
+        string source = """
+            impl Point {
+              fn translate(self, dx: i32) {
+                pass;
+              }
+            }
+            """;
+        AstNode ast = ParseSource(source);
+
+        ast.Should().BeOfType<ProgramNode>();
+        ProgramNode program = (ProgramNode)ast;
+        ImplBlockNode implBlock = program.Statements.OfType<ImplBlockNode>().Should().ContainSingle().Subject;
+        implBlock.TargetClass.Value.Should().Be("Point");
+        implBlock.Methods.Should().HaveCount(1);
+        implBlock.Methods[0].Name.Value.Should().Be("translate");
     }
 }
 ```
@@ -5121,7 +6148,7 @@ public class CompilerPipelineTests
     public void Compile_ValidProgram_ReturnsSuccess()
     {
         CompilerPipeline pipeline = CreateDefaultPipeline();
-        string source = "pass\n";
+        string source = "pass;\n";
 
         CompilationResult result = pipeline.Compile(source, "test.snek");
 
@@ -5159,9 +6186,9 @@ public class CompilerPipelineTests
     {
         CompilerPipeline pipeline = CreateDefaultPipeline();
         string source = """
-            fn foo() -> int:
-              return "wrong"
-
+            fn foo() -> int {
+              return "wrong";
+            }
             """;
 
         CompilationResult result = pipeline.Compile(source, "test.snek");
@@ -5175,7 +6202,7 @@ public class CompilerPipelineTests
     {
         PipelineOptions options = new() { EnableLogging = true };
         CompilerPipeline pipeline = CreateDefaultPipeline(options);
-        string source = "pass\n";
+        string source = "pass;\n";
 
         CompilationResult result = pipeline.Compile(source, "test.snek");
 
@@ -5187,7 +6214,7 @@ public class CompilerPipelineTests
     public void Compile_AssemblyOutput_ContainsExpectedSections()
     {
         CompilerPipeline pipeline = CreateDefaultPipeline();
-        string source = "print(\"hello\")\n";
+        string source = "print(\"hello\");\n";
 
         CompilationResult result = pipeline.Compile(source, "test.snek");
 

@@ -105,8 +105,12 @@ public class StatementAnalyzer
             _scopeManager.PushScope();
             try
             {
-                // Register 'self' as a first-class class type in the local method scope
-                _scopeManager.AddSymbol("self", new SymbolInfo(TypeKind.Class, method.Name.Line, method.Name.Column));
+                bool hasSelfParam = method.Parameters.Any(p => p.Name.Value == "self");
+                if (hasSelfParam)
+                {
+                    // Register 'self' as a first-class class type in the local method scope
+                    _scopeManager.AddSymbol("self", new SymbolInfo(TypeKind.Class, method.Name.Line, method.Name.Column));
+                }
 
                 foreach (ParameterNode param in method.Parameters)
                 {
@@ -166,7 +170,7 @@ public class StatementAnalyzer
         if (varDecl.Initializer != null)
         {
             TypeKind? initType = _expressionAnalyzer.AnalyzeExpression(varDecl.Initializer);
-            if (initType != null && initType != varType && varType != TypeKind.Any)
+            if (initType != null && initType != varType && varType != TypeKind.Any && initType != TypeKind.Any)
             {
                 _context.Diagnostics.Add(new Diagnostic(
                     _context.SourceName,
@@ -208,7 +212,7 @@ public class StatementAnalyzer
         }
 
         TypeKind? valueType = _expressionAnalyzer.AnalyzeExpression(assign.Value);
-        if (valueType != null && targetType != null && targetType != TypeKind.Any && valueType != targetType)
+        if (valueType != null && targetType != null && targetType != TypeKind.Any && valueType != TypeKind.Any && valueType != targetType)
         {
             _context.Diagnostics.Add(new Diagnostic(
                 _context.SourceName,
@@ -302,7 +306,7 @@ public class StatementAnalyzer
 
         TypeKind? actualType = _expressionAnalyzer.AnalyzeExpression(ret.Value);
 
-        if (expectedReturnType == null || actualType == null || actualType == expectedReturnType || expectedReturnType == TypeKind.Any)
+        if (expectedReturnType == null || actualType == null || actualType == expectedReturnType || expectedReturnType == TypeKind.Any || actualType == TypeKind.Any)
         {
             return;
         }

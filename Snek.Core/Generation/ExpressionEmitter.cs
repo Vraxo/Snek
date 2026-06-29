@@ -77,23 +77,21 @@ public class ExpressionEmitter
 
     private void EmitIdentifierAccess(IdentifierExpressionNode identifier)
     {
-        string name = identifier.Name.Value;
-
-        if (_generationContext.LocalOffsets.TryGetValue(name, out int localOffset))
+        if (_generationContext.LocalOffsets.TryGetValue(identifier.Name.Value, out int offset))
         {
-            _generationContext.Emit($"; load {name} (ebp-{localOffset})");
-            _generationContext.Emit($"mov eax, [ebp-{localOffset}]");
+            _generationContext.Emit($"; load {identifier.Name.Value} (ebp-{offset})");
+            _generationContext.Emit($"mov eax, [ebp-{offset}]");
             _generationContext.Emit("push eax");
         }
-        else if (_generationContext.ParameterOffsets.TryGetValue(name, out int paramOffset))
+        else if (_generationContext.ParameterOffsets.TryGetValue(identifier.Name.Value, out int paramOffset))
         {
-            _generationContext.Emit($"; load parameter {name} (ebp+{paramOffset})");
+            _generationContext.Emit($"; load {identifier.Name.Value} (ebp+{paramOffset})");
             _generationContext.Emit($"mov eax, [ebp+{paramOffset}]");
             _generationContext.Emit("push eax");
         }
         else
         {
-            _generationContext.Emit($"; load {name} (global/undefined)");
+            _generationContext.Emit($"; load {identifier.Name.Value} (global/undefined)");
             _generationContext.Emit("push 0");
         }
     }
@@ -292,21 +290,30 @@ public class ExpressionEmitter
 
         _generationContext.Emit("pop ebx"); // ebx = index
         _generationContext.Emit("pop eax"); // eax = base address
-        _generationContext.Emit("mov eax, [eax + ebx*4 + 4]");
+
+        bool isHighLevelList = false;
+        if (index.Target is IdentifierExpressionNode id &&
+            _generationContext.VariableTypes.TryGetValue(id.Name.Value, out string? className) &&
+            className == "List" &&
+            !_generationContext.ClassFields.ContainsKey("List"))
+        {
+            isHighLevelList = true;
+        }
+
+        if (isHighLevelList)
+        {
+            _generationContext.Emit("mov eax, [eax + ebx*4 + 4]");
+        }
+        else
+        {
+            _generationContext.Emit("mov eax, [eax + ebx*4]");
+        }
+
         _generationContext.Emit("push eax");
     }
 
     private void EmitMemberAccess(MemberAccessExpressionNode member)
     {
-        if (member.Member.Value == "length")
-        {
-            Emit(member.Object); // evaluates the array object (pushes base address)
-            _generationContext.Emit("pop eax"); // eax = base address
-            _generationContext.Emit("mov eax, [eax]"); // reads length header at offset 0
-            _generationContext.Emit("push eax");
-            return;
-        }
-
         if (member.Object is IdentifierExpressionNode id &&
             _generationContext.VariableTypes.TryGetValue(id.Name.Value, out string? className) &&
             _generationContext.ClassFields.TryGetValue(className, out List<string>? fields))
@@ -320,6 +327,15 @@ public class ExpressionEmitter
                 _generationContext.Emit("push eax");
                 return;
             }
+        }
+
+        if (member.Member.Value == "length")
+        {
+            Emit(member.Object); // evaluates the array object (pushes base address)
+            _generationContext.Emit("pop eax"); // eax = base address
+            _generationContext.Emit("mov eax, [eax]"); // reads length header at offset 0
+            _generationContext.Emit("push eax");
+            return;
         }
 
         _generationContext.Emit("; unsupported property access");

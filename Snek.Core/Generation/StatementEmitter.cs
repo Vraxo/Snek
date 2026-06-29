@@ -65,6 +65,16 @@ public class StatementEmitter
 
     public void EmitFunction(FunctionDefNode function)
     {
+        // 1. Save parent scope state
+        Dictionary<string, int> oldLocalOffsets = new(_generationContext.LocalOffsets);
+        int oldNextOffset = _generationContext.NextLocalOffset;
+        Dictionary<string, string> oldVariableTypes = new(_generationContext.VariableTypes);
+
+        // 2. Reset scope context for this function
+        _generationContext.LocalOffsets.Clear();
+        _generationContext.NextLocalOffset = 4;
+        _generationContext.VariableTypes.Clear();
+
         string mangledName = _generationContext.MangleName(function.Name.Value);
         _generationContext.EmitLine($"{mangledName}:");
 
@@ -74,10 +84,21 @@ public class StatementEmitter
         foreach (ParameterNode parameter in function.Parameters)
         {
             _generationContext.ParameterOffsets[parameter.Name.Value] = paramOffset;
+            if (parameter.TypeAnnotation != null)
+            {
+                _generationContext.VariableTypes[parameter.Name.Value] = parameter.TypeAnnotation.Name.Value;
+            }
             paramOffset += 4;
         }
 
+        int localsSize = ComputeLocalVariablesSize(function.Body);
+
         BeginFunctionPrologue();
+        if (localsSize > 0)
+        {
+            _generationContext.Emit($"sub esp, {localsSize}");
+        }
+
         EmitParameterComments(function.Parameters);
         EmitStatements(function.Body);
 
@@ -87,6 +108,19 @@ public class StatementEmitter
         }
 
         EmitFunctionEpilogue();
+
+        // 3. Restore parent scope state
+        _generationContext.LocalOffsets.Clear();
+        foreach (KeyValuePair<string, int> kvp in oldLocalOffsets)
+        {
+            _generationContext.LocalOffsets[kvp.Key] = kvp.Value;
+        }
+        _generationContext.NextLocalOffset = oldNextOffset;
+        _generationContext.VariableTypes.Clear();
+        foreach (KeyValuePair<string, string> kvp in oldVariableTypes)
+        {
+            _generationContext.VariableTypes[kvp.Key] = kvp.Value;
+        }
     }
 
     public void EmitImplBlock(ImplBlockNode implBlock)
@@ -94,17 +128,36 @@ public class StatementEmitter
         string className = implBlock.TargetClass.Value;
         foreach (FunctionDefNode method in implBlock.Methods)
         {
+            // 1. Save parent scope state
+            Dictionary<string, int> oldLocalOffsets = new(_generationContext.LocalOffsets);
+            int oldNextOffset = _generationContext.NextLocalOffset;
+            Dictionary<string, string> oldVariableTypes = new(_generationContext.VariableTypes);
+
+            // 2. Reset scope context for this method
+            _generationContext.LocalOffsets.Clear();
+            _generationContext.NextLocalOffset = 4;
+            _generationContext.VariableTypes.Clear();
+
             string mangledName = $"{className}_{method.Name.Value}";
             _generationContext.EmitLine($"{mangledName}:");
 
-            // Record that inside this compiled method, 'self' has type 'className'
             _generationContext.VariableTypes["self"] = className;
 
-            // Map parameter stack offsets for implementation block methods
+            // Map parameter stack offsets dynamically based on whether it is static or an instance method
             _generationContext.ParameterOffsets.Clear();
-            _generationContext.ParameterOffsets["self"] = 8; // 'self' is always the first parameter
 
-            int paramOffset = 12;
+            bool hasSelfParam = method.Parameters.Any(p => p.Name.Value == "self");
+            int paramOffset = 8;
+            if (hasSelfParam)
+            {
+                _generationContext.ParameterOffsets["self"] = 8; // 'self' is always the first parameter
+                paramOffset = 12; // Subsequent parameters start at [ebp+12]
+            }
+            else
+            {
+                paramOffset = 8; // Static methods parameters start at [ebp+8]
+            }
+
             foreach (ParameterNode parameter in method.Parameters)
             {
                 if (parameter.Name.Value == "self")
@@ -112,10 +165,21 @@ public class StatementEmitter
                     continue;
                 }
                 _generationContext.ParameterOffsets[parameter.Name.Value] = paramOffset;
+                if (parameter.TypeAnnotation != null)
+                {
+                    _generationContext.VariableTypes[parameter.Name.Value] = parameter.TypeAnnotation.Name.Value;
+                }
                 paramOffset += 4;
             }
 
+            int localsSize = ComputeLocalVariablesSize(method.Body);
+
             BeginFunctionPrologue();
+            if (localsSize > 0)
+            {
+                _generationContext.Emit($"sub esp, {localsSize}");
+            }
+
             EmitParameterComments(method.Parameters);
             EmitStatements(method.Body);
 
@@ -125,6 +189,19 @@ public class StatementEmitter
             }
 
             EmitFunctionEpilogue();
+
+            // 3. Restore parent scope state
+            _generationContext.LocalOffsets.Clear();
+            foreach (KeyValuePair<string, int> kvp in oldLocalOffsets)
+            {
+                _generationContext.LocalOffsets[kvp.Key] = kvp.Value;
+            }
+            _generationContext.NextLocalOffset = oldNextOffset;
+            _generationContext.VariableTypes.Clear();
+            foreach (KeyValuePair<string, string> kvp in oldVariableTypes)
+            {
+                _generationContext.VariableTypes[kvp.Key] = kvp.Value;
+            }
         }
     }
 
@@ -276,6 +353,11 @@ public class StatementEmitter
                 _generationContext.Emit("pop eax");
                 _generationContext.Emit($"mov [ebp-{offset}], eax");
             }
+            else if (_generationContext.ParameterOffsets.TryGetValue(id.Name.Value, out int paramOffset))
+            {
+                _generationContext.Emit("pop eax");
+                _generationContext.Emit($"mov [ebp+{paramOffset}], eax");
+            }
             else
             {
                 _generationContext.Emit("; undefined global assignment fallback");
@@ -306,6 +388,33 @@ public class StatementEmitter
             {
                 _generationContext.Emit("; unsupported member object assignment");
                 _generationContext.Emit("pop eax");
+            }
+        }
+        else if (assignment.Target is IndexExpressionNode index)
+        {
+            _expressionEmitter.Emit(index.Target);     // evaluates base address pointer
+            _expressionEmitter.Emit(index.Index);      // evaluates index
+
+            _generationContext.Emit("pop ecx"); // ecx = index
+            _generationContext.Emit("pop edx"); // edx = base address pointer
+            _generationContext.Emit("pop eax"); // eax = value to assign
+
+            bool isHighLevelList = false;
+            if (index.Target is IdentifierExpressionNode targetId &&
+                _generationContext.VariableTypes.TryGetValue(targetId.Name.Value, out string? className) &&
+                className == "List" &&
+                !_generationContext.ClassFields.ContainsKey("List"))
+            {
+                isHighLevelList = true;
+            }
+
+            if (isHighLevelList)
+            {
+                _generationContext.Emit("mov [edx + ecx*4 + 4], eax");
+            }
+            else
+            {
+                _generationContext.Emit("mov [edx + ecx*4], eax");
             }
         }
         else
