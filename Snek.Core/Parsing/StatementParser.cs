@@ -35,6 +35,11 @@ public class StatementParser
 
     private StatementNode? ParseStatement()
     {
+        if (_stream.Match(TokenType.KeywordImport))
+        {
+            return ParseImport();
+        }
+
         if (_stream.Match(TokenType.KeywordImpl))
         {
             return ParseImplBlock();
@@ -123,6 +128,13 @@ public class StatementParser
 
         _stream.Consume(TokenType.Semicolon);
         return new ExpressionStatementNode(leftExpr);
+    }
+
+    private ImportStatementNode ParseImport()
+    {
+        Token moduleToken = _stream.Consume(TokenType.Identifier);
+        _stream.Consume(TokenType.Semicolon);
+        return new ImportStatementNode(moduleToken.Value);
     }
 
     private FunctionDefNode ParseFunctionDef()

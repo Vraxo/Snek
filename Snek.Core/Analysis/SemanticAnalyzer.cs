@@ -106,10 +106,12 @@ public class SemanticAnalyzer : ISemanticAnalyzer
             constructorParams.Add(new ParameterNode(field.Name, field.Type, null));
         }
 
+        TypeKind classTypeKind = TypeKindExtensions.FromString(classDef.Name.Value);
+
         FunctionType constructorType = new(
             classDef.Name.Value,
             constructorParams,
-            TypeKind.Class);
+            classTypeKind);
 
         _scopeManager.AddGlobalSymbol(
             classDef.Name.Value,

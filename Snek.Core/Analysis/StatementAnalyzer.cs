@@ -105,11 +105,12 @@ public class StatementAnalyzer
             _scopeManager.PushScope();
             try
             {
+                TypeKind targetTypeKind = TypeKindExtensions.FromString(implBlock.TargetClass.Value);
                 bool hasSelfParam = method.Parameters.Any(p => p.Name.Value == "self");
                 if (hasSelfParam)
                 {
-                    // Register 'self' as a first-class class type in the local method scope
-                    _scopeManager.AddSymbol("self", new SymbolInfo(TypeKind.Class, method.Name.Line, method.Name.Column));
+                    // Register 'self' as the class target type in the local method scope
+                    _scopeManager.AddSymbol("self", new SymbolInfo(targetTypeKind, method.Name.Line, method.Name.Column));
                 }
 
                 foreach (ParameterNode param in method.Parameters)

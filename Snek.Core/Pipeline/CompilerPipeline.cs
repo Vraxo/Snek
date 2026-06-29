@@ -55,6 +55,14 @@ public class CompilerPipeline
                 return new CompilationResult(context.Diagnostics);
             }
 
+            // Stage 2.5: Pre-process Imports
+            if (ast is ProgramNode program)
+            {
+                HashSet<string> importedModules = [];
+                List<StatementNode> resolvedStatements = ResolveImports(program.Statements, context, importedModules);
+                ast = new ProgramNode(resolvedStatements);
+            }
+
             // Stage 3: Semantic Analysis
             if (_options.EnableLogging)
             {
@@ -90,6 +98,95 @@ public class CompilerPipeline
 
             return new(context.Diagnostics);
         }
+    }
+
+    private List<StatementNode> ResolveImports(IReadOnlyList<StatementNode> statements, CompilationContext context, HashSet<string> importedModules)
+    {
+        List<StatementNode> resolved = [];
+        foreach (StatementNode statement in statements)
+        {
+            if (statement is ImportStatementNode importNode)
+            {
+                string moduleName = importNode.ModuleName;
+                if (importedModules.Contains(moduleName))
+                {
+                    continue; // Prevent cycle/duplicate compilation
+                }
+                importedModules.Add(moduleName);
+
+                string? moduleSource = null;
+                if (moduleName == "list")
+                {
+                    moduleSource = """
+                        extern fn malloc(size: i32) -> Any;
+                        extern fn realloc(ptr: Any, size: i32) -> Any;
+
+                        class List {
+                            data: Any;
+                            length: i32;
+                            capacity: i32;
+                        }
+
+                        impl List {
+                            fn new() -> List {
+                                self: List = List(0, 0, 0);
+                                self.data = malloc(16);
+                                self.length = 0;
+                                self.capacity = 4;
+                                return self;
+                            }
+
+                            fn append(self, val: Any) {
+                                if self.length == self.capacity {
+                                    self.capacity = self.capacity * 2;
+                                    self.data = realloc(self.data, self.capacity * 4);
+                                }
+                                self.data[self.length] = val;
+                                self.length = self.length + 1;
+                            }
+
+                            fn get(self, idx: i32) -> Any {
+                                return self.data[idx];
+                            }
+                        }
+                        """;
+                }
+                else
+                {
+                    string fileName = $"{moduleName}.snek";
+                    if (File.Exists(fileName))
+                    {
+                        moduleSource = File.ReadAllText(fileName);
+                    }
+                }
+
+                if (moduleSource == null)
+                {
+                    context.Diagnostics.Add(new(
+                        context.SourceName,
+                        $"Module '{moduleName}' not found",
+                        -1, -1,
+                        DiagnosticSeverity.Error));
+                    continue;
+                }
+
+                Lexer lexer = new();
+                Parser parser = new();
+                IEnumerable<Token> tokens = lexer.Tokenize(moduleSource, context);
+                AstNode importedAst = parser.Parse(tokens, context);
+
+                if (importedAst is ProgramNode importedProgram)
+                {
+                    List<StatementNode> resolvedImported = ResolveImports(importedProgram.Statements, context, importedModules);
+                    resolved.AddRange(resolvedImported);
+                }
+            }
+            else
+            {
+                resolved.Add(statement);
+            }
+        }
+        return resolved;
     }
 
     private static void LogStage(string sourceName, string stage)
