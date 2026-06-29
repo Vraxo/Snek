@@ -6,4 +6,5 @@ public record FunctionDefNode(
     Token Name,
     List<ParameterNode> Parameters,
     TypeNode? ReturnType,
-    List<StatementNode> Body) : StatementNode;
+    List<StatementNode> Body,
+    bool IsPublic = false) : StatementNode;

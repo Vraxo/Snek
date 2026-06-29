@@ -15,4 +15,10 @@
 		<ProjectReference Include="..\Snek.Core\Snek.Core.csproj" />
 	</ItemGroup>
 
+	<ItemGroup>
+		<None Update="std\**\*">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</None>
+	</ItemGroup>
+
 </Project>

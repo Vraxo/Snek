@@ -35,9 +35,21 @@ public class StatementParser
 
     private StatementNode? ParseStatement()
     {
+        bool isPub = _stream.Match(TokenType.KeywordPub);
+
         if (_stream.Match(TokenType.KeywordImport))
         {
             return ParseImport();
+        }
+
+        if (_stream.Match(TokenType.KeywordMod))
+        {
+            return ParseMod();
+        }
+
+        if (_stream.Match(TokenType.KeywordUse))
+        {
+            return ParseUse();
         }
 
         if (_stream.Match(TokenType.KeywordImpl))
@@ -47,17 +59,17 @@ public class StatementParser
 
         if (_stream.Match(TokenType.KeywordClass))
         {
-            return ParseClassDef();
+            return ParseClassDef(isPub);
         }
 
         if (_stream.Match(TokenType.KeywordExtern))
         {
-            return ParseExternFunctionDef();
+            return ParseExternFunctionDef(isPub);
         }
 
         if (_stream.Match(TokenType.KeywordFn) || _stream.Match(TokenType.KeywordDef))
         {
-            return ParseFunctionDef();
+            return ParseFunctionDef(isPub);
         }
 
         if (_stream.Match(TokenType.KeywordIf))
@@ -137,7 +149,32 @@ public class StatementParser
         return new ImportStatementNode(moduleToken.Value);
     }
 
-    private FunctionDefNode ParseFunctionDef()
+    private ModuleDeclarationNode ParseMod()
+    {
+        Token moduleToken = _stream.Consume(TokenType.Identifier);
+        _stream.Consume(TokenType.Semicolon);
+        return new ModuleDeclarationNode(moduleToken);
+    }
+
+    private UseStatementNode ParseUse()
+    {
+        Token moduleToken = _stream.Consume(TokenType.Identifier);
+        _stream.Consume(TokenType.DoubleColon);
+
+        if (_stream.Match(TokenType.Star))
+        {
+            _stream.Consume(TokenType.Semicolon);
+            return new UseStatementNode(moduleToken, null, true);
+        }
+        else
+        {
+            Token itemToken = _stream.Consume(TokenType.Identifier);
+            _stream.Consume(TokenType.Semicolon);
+            return new UseStatementNode(moduleToken, itemToken, false);
+        }
+    }
+
+    private FunctionDefNode ParseFunctionDef(bool isPub)
     {
         Token name = _stream.Consume(TokenType.Identifier);
         _stream.Consume(TokenType.LeftParen);
@@ -152,7 +189,7 @@ public class StatementParser
 
         List<StatementNode> body = ParseBlock();
 
-        return new(name, parameters, returnType, body);
+        return new(name, parameters, returnType, body, isPub);
     }
 
     private ImplBlockNode ParseImplBlock()
@@ -163,9 +200,10 @@ public class StatementParser
 
         while (!_stream.Match(TokenType.RightBrace) && !_stream.Match(TokenType.Eof))
         {
+            bool isPub = _stream.Match(TokenType.KeywordPub);
             if (_stream.Match(TokenType.KeywordFn) || _stream.Match(TokenType.KeywordDef))
             {
-                methods.Add(ParseFunctionDef());
+                methods.Add(ParseFunctionDef(isPub));
             }
             else
             {
@@ -176,7 +214,7 @@ public class StatementParser
         return new ImplBlockNode(targetClass, methods);
     }
 
-    private ClassDefNode ParseClassDef()
+    private ClassDefNode ParseClassDef(bool isPub)
     {
         Token name = _stream.Consume(TokenType.Identifier);
         _stream.Consume(TokenType.LeftBrace);
@@ -191,10 +229,10 @@ public class StatementParser
             fields.Add(new FieldNode(fieldName, fieldType));
         }
 
-        return new ClassDefNode(name, fields);
+        return new ClassDefNode(name, fields, isPub);
     }
 
-    private ExternFunctionDefNode ParseExternFunctionDef()
+    private ExternFunctionDefNode ParseExternFunctionDef(bool isPub)
     {
         _stream.Consume(TokenType.KeywordFn);
         Token name = _stream.Consume(TokenType.Identifier);
@@ -209,7 +247,7 @@ public class StatementParser
         }
 
         _stream.Consume(TokenType.Semicolon);
-        return new ExternFunctionDefNode(name, parameters, returnType);
+        return new ExternFunctionDefNode(name, parameters, returnType, isPub);
     }
 
     private VariableDeclarationNode ParseVariableDeclaration()

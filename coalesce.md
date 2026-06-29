@@ -599,10 +599,12 @@ public class SemanticAnalyzer : ISemanticAnalyzer
             constructorParams.Add(new ParameterNode(field.Name, field.Type, null));
         }
 
+        TypeKind classTypeKind = TypeKindExtensions.FromString(classDef.Name.Value);
+
         FunctionType constructorType = new(
             classDef.Name.Value,
             constructorParams,
-            TypeKind.Class);
+            classTypeKind);
 
         _scopeManager.AddGlobalSymbol(
             classDef.Name.Value,
@@ -754,11 +756,12 @@ public class StatementAnalyzer
             _scopeManager.PushScope();
             try
             {
+                TypeKind targetTypeKind = TypeKindExtensions.FromString(implBlock.TargetClass.Value);
                 bool hasSelfParam = method.Parameters.Any(p => p.Name.Value == "self");
                 if (hasSelfParam)
                 {
-                    // Register 'self' as a first-class class type in the local method scope
-                    _scopeManager.AddSymbol("self", new SymbolInfo(TypeKind.Class, method.Name.Line, method.Name.Column));
+                    // Register 'self' as the class target type in the local method scope
+                    _scopeManager.AddSymbol("self", new SymbolInfo(targetTypeKind, method.Name.Line, method.Name.Column));
                 }
 
                 foreach (ParameterNode param in method.Parameters)
@@ -1277,6 +1280,16 @@ using Snek.Core.Lexing;
 namespace Snek.Core.Ast;
 
 public record ImplBlockNode(Token TargetClass, List<FunctionDefNode> Methods) : StatementNode;
+```
+
+---
+
+### `Snek.Core\Ast\ImportStatementNode.cs`
+
+```csharp
+namespace Snek.Core.Ast;
+
+public record ImportStatementNode(string ModuleName) : StatementNode;
 ```
 
 ---
@@ -2254,6 +2267,12 @@ public class ExpressionEmitter
             _generationContext.Emit($"mov eax, [ebp-{offset}]");
             _generationContext.Emit("push eax");
         }
+        else if (_generationContext.ParameterOffsets.TryGetValue(identifier.Name.Value, out int paramOffset))
+        {
+            _generationContext.Emit($"; load {identifier.Name.Value} (ebp+{paramOffset})");
+            _generationContext.Emit($"mov eax, [ebp+{paramOffset}]");
+            _generationContext.Emit("push eax");
+        }
         else
         {
             _generationContext.Emit($"; load {identifier.Name.Value} (global/undefined)");
@@ -2479,15 +2498,6 @@ public class ExpressionEmitter
 
     private void EmitMemberAccess(MemberAccessExpressionNode member)
     {
-        if (member.Member.Value == "length")
-        {
-            Emit(member.Object); // evaluates the array object (pushes base address)
-            _generationContext.Emit("pop eax"); // eax = base address
-            _generationContext.Emit("mov eax, [eax]"); // reads length header at offset 0
-            _generationContext.Emit("push eax");
-            return;
-        }
-
         if (member.Object is IdentifierExpressionNode id &&
             _generationContext.VariableTypes.TryGetValue(id.Name.Value, out string? className) &&
             _generationContext.ClassFields.TryGetValue(className, out List<string>? fields))
@@ -2501,6 +2511,15 @@ public class ExpressionEmitter
                 _generationContext.Emit("push eax");
                 return;
             }
+        }
+
+        if (member.Member.Value == "length")
+        {
+            Emit(member.Object); // evaluates the array object (pushes base address)
+            _generationContext.Emit("pop eax"); // eax = base address
+            _generationContext.Emit("mov eax, [eax]"); // reads length header at offset 0
+            _generationContext.Emit("push eax");
+            return;
         }
 
         _generationContext.Emit("; unsupported property access");
@@ -2899,10 +2918,12 @@ public class StatementEmitter
         // 1. Save parent scope state
         Dictionary<string, int> oldLocalOffsets = new(_generationContext.LocalOffsets);
         int oldNextOffset = _generationContext.NextLocalOffset;
+        Dictionary<string, string> oldVariableTypes = new(_generationContext.VariableTypes);
 
         // 2. Reset scope context for this function
         _generationContext.LocalOffsets.Clear();
         _generationContext.NextLocalOffset = 4;
+        _generationContext.VariableTypes.Clear();
 
         string mangledName = _generationContext.MangleName(function.Name.Value);
         _generationContext.EmitLine($"{mangledName}:");
@@ -2913,6 +2934,10 @@ public class StatementEmitter
         foreach (ParameterNode parameter in function.Parameters)
         {
             _generationContext.ParameterOffsets[parameter.Name.Value] = paramOffset;
+            if (parameter.TypeAnnotation != null)
+            {
+                _generationContext.VariableTypes[parameter.Name.Value] = parameter.TypeAnnotation.Name.Value;
+            }
             paramOffset += 4;
         }
 
@@ -2936,25 +2961,32 @@ public class StatementEmitter
 
         // 3. Restore parent scope state
         _generationContext.LocalOffsets.Clear();
-        foreach (var kvp in oldLocalOffsets)
+        foreach (KeyValuePair<string, int> kvp in oldLocalOffsets)
         {
             _generationContext.LocalOffsets[kvp.Key] = kvp.Value;
         }
         _generationContext.NextLocalOffset = oldNextOffset;
+        _generationContext.VariableTypes.Clear();
+        foreach (KeyValuePair<string, string> kvp in oldVariableTypes)
+        {
+            _generationContext.VariableTypes[kvp.Key] = kvp.Value;
+        }
     }
 
     public void EmitImplBlock(ImplBlockNode implBlock)
     {
         string className = implBlock.TargetClass.Value;
-        foreach (var method in implBlock.Methods)
+        foreach (FunctionDefNode method in implBlock.Methods)
         {
             // 1. Save parent scope state
             Dictionary<string, int> oldLocalOffsets = new(_generationContext.LocalOffsets);
             int oldNextOffset = _generationContext.NextLocalOffset;
+            Dictionary<string, string> oldVariableTypes = new(_generationContext.VariableTypes);
 
             // 2. Reset scope context for this method
             _generationContext.LocalOffsets.Clear();
             _generationContext.NextLocalOffset = 4;
+            _generationContext.VariableTypes.Clear();
 
             string mangledName = $"{className}_{method.Name.Value}";
             _generationContext.EmitLine($"{mangledName}:");
@@ -2976,13 +3008,17 @@ public class StatementEmitter
                 paramOffset = 8; // Static methods parameters start at [ebp+8]
             }
 
-            foreach (var parameter in method.Parameters)
+            foreach (ParameterNode parameter in method.Parameters)
             {
                 if (parameter.Name.Value == "self")
                 {
                     continue;
                 }
                 _generationContext.ParameterOffsets[parameter.Name.Value] = paramOffset;
+                if (parameter.TypeAnnotation != null)
+                {
+                    _generationContext.VariableTypes[parameter.Name.Value] = parameter.TypeAnnotation.Name.Value;
+                }
                 paramOffset += 4;
             }
 
@@ -3006,11 +3042,16 @@ public class StatementEmitter
 
             // 3. Restore parent scope state
             _generationContext.LocalOffsets.Clear();
-            foreach (var kvp in oldLocalOffsets)
+            foreach (KeyValuePair<string, int> kvp in oldLocalOffsets)
             {
                 _generationContext.LocalOffsets[kvp.Key] = kvp.Value;
             }
             _generationContext.NextLocalOffset = oldNextOffset;
+            _generationContext.VariableTypes.Clear();
+            foreach (KeyValuePair<string, string> kvp in oldVariableTypes)
+            {
+                _generationContext.VariableTypes[kvp.Key] = kvp.Value;
+            }
         }
     }
 
@@ -3162,6 +3203,11 @@ public class StatementEmitter
                 _generationContext.Emit("pop eax");
                 _generationContext.Emit($"mov [ebp-{offset}], eax");
             }
+            else if (_generationContext.ParameterOffsets.TryGetValue(id.Name.Value, out int paramOffset))
+            {
+                _generationContext.Emit("pop eax");
+                _generationContext.Emit($"mov [ebp+{paramOffset}], eax");
+            }
             else
             {
                 _generationContext.Emit("; undefined global assignment fallback");
@@ -3196,7 +3242,6 @@ public class StatementEmitter
         }
         else if (assignment.Target is IndexExpressionNode index)
         {
-            _expressionEmitter.Emit(assignment.Value); // evaluates value to assign
             _expressionEmitter.Emit(index.Target);     // evaluates base address pointer
             _expressionEmitter.Emit(index.Index);      // evaluates index
 
@@ -4295,6 +4340,11 @@ public class StatementParser
 
     private StatementNode? ParseStatement()
     {
+        if (_stream.Match(TokenType.KeywordImport))
+        {
+            return ParseImport();
+        }
+
         if (_stream.Match(TokenType.KeywordImpl))
         {
             return ParseImplBlock();
@@ -4383,6 +4433,13 @@ public class StatementParser
 
         _stream.Consume(TokenType.Semicolon);
         return new ExpressionStatementNode(leftExpr);
+    }
+
+    private ImportStatementNode ParseImport()
+    {
+        Token moduleToken = _stream.Consume(TokenType.Identifier);
+        _stream.Consume(TokenType.Semicolon);
+        return new ImportStatementNode(moduleToken.Value);
     }
 
     private FunctionDefNode ParseFunctionDef()
@@ -4730,6 +4787,14 @@ public class CompilerPipeline
                 return new CompilationResult(context.Diagnostics);
             }
 
+            // Stage 2.5: Pre-process Imports
+            if (ast is ProgramNode program)
+            {
+                HashSet<string> importedModules = [];
+                List<StatementNode> resolvedStatements = ResolveImports(program.Statements, context, importedModules);
+                ast = new ProgramNode(resolvedStatements);
+            }
+
             // Stage 3: Semantic Analysis
             if (_options.EnableLogging)
             {
@@ -4765,6 +4830,95 @@ public class CompilerPipeline
 
             return new(context.Diagnostics);
         }
+    }
+
+    private List<StatementNode> ResolveImports(IReadOnlyList<StatementNode> statements, CompilationContext context, HashSet<string> importedModules)
+    {
+        List<StatementNode> resolved = [];
+        foreach (StatementNode statement in statements)
+        {
+            if (statement is ImportStatementNode importNode)
+            {
+                string moduleName = importNode.ModuleName;
+                if (importedModules.Contains(moduleName))
+                {
+                    continue; // Prevent cycle/duplicate compilation
+                }
+                importedModules.Add(moduleName);
+
+                string? moduleSource = null;
+                if (moduleName == "list")
+                {
+                    moduleSource = """
+                        extern fn malloc(size: i32) -> Any;
+                        extern fn realloc(ptr: Any, size: i32) -> Any;
+
+                        class List {
+                            data: Any;
+                            length: i32;
+                            capacity: i32;
+                        }
+
+                        impl List {
+                            fn new() -> List {
+                                self: List = List(0, 0, 0);
+                                self.data = malloc(16);
+                                self.length = 0;
+                                self.capacity = 4;
+                                return self;
+                            }
+
+                            fn append(self, val: Any) {
+                                if self.length == self.capacity {
+                                    self.capacity = self.capacity * 2;
+                                    self.data = realloc(self.data, self.capacity * 4);
+                                }
+                                self.data[self.length] = val;
+                                self.length = self.length + 1;
+                            }
+
+                            fn get(self, idx: i32) -> Any {
+                                return self.data[idx];
+                            }
+                        }
+                        """;
+                }
+                else
+                {
+                    string fileName = $"{moduleName}.snek";
+                    if (File.Exists(fileName))
+                    {
+                        moduleSource = File.ReadAllText(fileName);
+                    }
+                }
+
+                if (moduleSource == null)
+                {
+                    context.Diagnostics.Add(new(
+                        context.SourceName,
+                        $"Module '{moduleName}' not found",
+                        -1, -1,
+                        DiagnosticSeverity.Error));
+                    continue;
+                }
+
+                Lexer lexer = new();
+                Parser parser = new();
+                IEnumerable<Token> tokens = lexer.Tokenize(moduleSource, context);
+                AstNode importedAst = parser.Parse(tokens, context);
+
+                if (importedAst is ProgramNode importedProgram)
+                {
+                    List<StatementNode> resolvedImported = ResolveImports(importedProgram.Statements, context, importedModules);
+                    resolved.AddRange(resolvedImported);
+                }
+            }
+            else
+            {
+                resolved.Add(statement);
+            }
+        }
+        return resolved;
     }
 
     private static void LogStage(string sourceName, string stage)
@@ -5470,7 +5624,10 @@ public sealed class CodeGeneratorTests
         Parser parser = new();
         SemanticAnalyzer analyzer = new();
 
-        IEnumerable<Token> tokens = lexer.Tokenize(source, _context);
+        string prelude = Snek.Core.Pipeline.CompilerPipeline.GetPrelude();
+        string finalSource = source.Contains("class List") ? source : prelude + source;
+
+        IEnumerable<Token> tokens = lexer.Tokenize(finalSource, _context);
         AstNode ast = parser.Parse(tokens, _context);
         analyzer.Analyze(ast, _context);
 
@@ -5650,7 +5807,10 @@ public sealed class CodeGeneratorTests
         SemanticAnalyzer analyzer = new();
         CompilationContext context = new("test.snek", new());
 
-        IEnumerable<Token> tokens = lexer.Tokenize(source, context);
+        string prelude = Snek.Core.Pipeline.CompilerPipeline.GetPrelude();
+        string finalSource = prelude + source;
+
+        IEnumerable<Token> tokens = lexer.Tokenize(finalSource, context);
         AstNode ast = parser.Parse(tokens, context);
         analyzer.Analyze(ast, context);
 
@@ -5666,7 +5826,10 @@ public sealed class CodeGeneratorTests
         SemanticAnalyzer analyzer = new();
         CompilationContext context = new("test.snek", new());
 
-        IEnumerable<Token> tokens = lexer.Tokenize(source, context);
+        string prelude = Snek.Core.Pipeline.CompilerPipeline.GetPrelude();
+        string finalSource = prelude + source;
+
+        IEnumerable<Token> tokens = lexer.Tokenize(finalSource, context);
         AstNode ast = parser.Parse(tokens, context);
         analyzer.Analyze(ast, context);
 
@@ -5718,8 +5881,8 @@ public sealed class CodeGeneratorTests
 
         string output = GenerateSource(source);
 
-        output.Should().Contain("mov dword [eax], 2"); // Alloc header store length
-        output.Should().Contain("mov eax, [eax]");     // Property load header lookup
+        output.Should().Contain("mov [eax + 4]");       // List constructor stores elementCount at offset 4
+        output.Should().Contain("mov eax, [eax + 4]");   // Property load length field lookup
     }
 
     [Fact]

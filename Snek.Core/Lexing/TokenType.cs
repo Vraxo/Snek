@@ -34,6 +34,9 @@ public enum TokenType
     KeywordNot,
     KeywordExtern,
     KeywordImpl,
+    KeywordMod,
+    KeywordUse,
+    KeywordPub,
 
     // Literals
     Identifier,
@@ -59,6 +62,7 @@ public enum TokenType
     GreaterEqual,
     Arrow,          // ->
     Colon,
+    DoubleColon,    // ::
     Comma,
     Dot,
     LeftParen,

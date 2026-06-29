@@ -1,0 +1,31 @@
+extern fn malloc(size: i32) -> Any;
+extern fn realloc(ptr: Any, size: i32) -> Any;
+
+pub class List {
+    data: Any;
+    length: i32;
+    capacity: i32;
+}
+
+impl List {
+    pub fn new() -> List {
+        self: List = List(0, 0, 0);
+        self.data = malloc(16);
+        self.length = 0;
+        self.capacity = 4;
+        return self;
+    }
+
+    pub fn append(self, val: Any) {
+        if self.length == self.capacity {
+            self.capacity = self.capacity * 2;
+            self.data = realloc(self.data, self.capacity * 4);
+        }
+        self.data[self.length] = val;
+        self.length = self.length + 1;
+    }
+
+    pub fn get(self, idx: i32) -> Any {
+        return self.data[idx];
+    }
+}
