@@ -276,4 +276,50 @@ public sealed class CodeGeneratorTests
         output.Should().Contain("mov dword [eax], 2"); // Alloc header store length
         output.Should().Contain("mov eax, [eax]");     // Property load header lookup
     }
+
+    [Fact]
+    public void Generate_ClassInstantiator_EmitsHeapAllocAndFieldWrites()
+    {
+        string source = """
+            class Point {
+              x: i32;
+              y: i32;
+            }
+
+            p: Point = Point(10, 20);
+            p.x = 42;
+            """;
+
+        string output = GenerateSource(source);
+
+        output.Should().Contain("push 8");             // allocate 8 bytes (2 fields)
+        output.Should().Contain("call [malloc]");
+        output.Should().Contain("mov [eax + 0], ebx"); // write Point.x (10)
+        output.Should().Contain("mov [edx + 0], eax"); // assign p.x = 42
+    }
+
+    [Fact]
+    public void Generate_RustStyleImpl_CompilesMethodsAndCallWithSelf()
+    {
+        string source = """
+            class Point {
+              x: i32;
+              y: i32;
+            }
+
+            impl Point {
+              fn translate(self, dx: i32) {
+                self.x = self.x + dx;
+              }
+            }
+
+            p: Point = Point(10, 20);
+            p.translate(35);
+            """;
+
+        string output = GenerateSource(source);
+
+        output.Should().Contain("Point_translate:");   // Mangled method definition
+        output.Should().Contain("call Point_translate"); // Implicit self param cdecl call
+    }
 }

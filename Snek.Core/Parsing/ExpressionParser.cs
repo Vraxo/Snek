@@ -37,32 +37,39 @@ public class ExpressionParser
 
     private ExpressionNode ParsePrimary()
     {
-        if (_stream.Match(TokenType.Identifier))
-        {
-            Token name = _stream.Previous;
+        ExpressionNode left = ParseBasePrimary();
 
+        while (true)
+        {
             if (_stream.Match(TokenType.LeftParen))
             {
-                return ParseCall(name);
+                left = ParseCall(left);
+            }
+            else if (_stream.Match(TokenType.Dot))
+            {
+                Token member = _stream.Consume(TokenType.Identifier);
+                left = new MemberAccessExpressionNode(left, member);
+            }
+            else if (_stream.Match(TokenType.LeftBracket))
+            {
+                ExpressionNode index = ParseExpression();
+                _stream.Consume(TokenType.RightBracket);
+                left = new IndexExpressionNode(left, index);
             }
             else
             {
-                if (_stream.Match(TokenType.Dot))
-                {
-                    return ParseMemberAccess(name);
-                }
-                else
-                {
-                    if (_stream.Match(TokenType.LeftBracket))
-                    {
-                        return ParseIndex(name);
-                    }
-                    else
-                    {
-                        return new IdentifierExpressionNode(name);
-                    }
-                }
+                break;
             }
+        }
+
+        return left;
+    }
+
+    private ExpressionNode ParseBasePrimary()
+    {
+        if (_stream.Match(TokenType.Identifier))
+        {
+            return new IdentifierExpressionNode(_stream.Previous);
         }
 
         if (_stream.Match(TokenType.StringLiteral) ||
@@ -107,7 +114,7 @@ public class ExpressionParser
         return new LiteralExpressionNode(new(TokenType.Unknown, "unknown", -1, -1));
     }
 
-    private CallExpressionNode ParseCall(Token callee)
+    private CallExpressionNode ParseCall(ExpressionNode callee)
     {
         List<ExpressionNode> args = [];
 
@@ -121,20 +128,7 @@ public class ExpressionParser
             _stream.Consume(TokenType.RightParen);
         }
 
-        return new(new IdentifierExpressionNode(callee), args);
-    }
-
-    private MemberAccessExpressionNode ParseMemberAccess(Token obj)
-    {
-        Token member = _stream.Consume(TokenType.Identifier);
-        return new MemberAccessExpressionNode(new IdentifierExpressionNode(obj), member);
-    }
-
-    private IndexExpressionNode ParseIndex(Token target)
-    {
-        ExpressionNode index = ParseExpression();
-        _stream.Consume(TokenType.RightBracket);
-        return new(new IdentifierExpressionNode(target), index);
+        return new(callee, args);
     }
 
     private ListExpressionNode ParseListLiteral()

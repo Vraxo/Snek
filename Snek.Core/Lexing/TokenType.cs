@@ -33,6 +33,7 @@ public enum TokenType
     KeywordOr,
     KeywordNot,
     KeywordExtern,
+    KeywordImpl,
 
     // Literals
     Identifier,

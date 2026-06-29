@@ -152,7 +152,7 @@ public class ParserTests
         ast.Should().BeOfType<ProgramNode>();
         ProgramNode program = (ProgramNode)ast;
         AssignmentStatementNode assign = program.Statements.OfType<AssignmentStatementNode>().Should().ContainSingle().Subject;
-        assign.Name.Value.Should().Be("x");
+        assign.Target.Should().BeOfType<IdentifierExpressionNode>();
         assign.Value.Should().BeOfType<LiteralExpressionNode>();
     }
 
@@ -165,7 +165,7 @@ public class ParserTests
         ast.Should().BeOfType<ProgramNode>();
         ProgramNode program = (ProgramNode)ast;
         AssignmentStatementNode assign = program.Statements.OfType<AssignmentStatementNode>().Should().ContainSingle().Subject;
-        assign.Name.Value.Should().Be("x");
+        assign.Target.Should().BeOfType<IdentifierExpressionNode>();
         assign.Value.Should().BeOfType<BinaryExpressionNode>();
 
         BinaryExpressionNode binary = (BinaryExpressionNode)assign.Value;
@@ -187,5 +187,45 @@ public class ParserTests
         extFunc.Parameters.Should().ContainSingle();
         extFunc.Parameters[0].Name.Value.Should().Be("cmd");
         extFunc.ReturnType?.Name.Value.Should().Be("str");
+    }
+
+    [Fact]
+    public void Parse_ClassDef_CreatesClassDefNode()
+    {
+        string source = """
+            class Point {
+              x: i32;
+              y: i32;
+            }
+            """;
+        AstNode ast = ParseSource(source);
+
+        ast.Should().BeOfType<ProgramNode>();
+        ProgramNode program = (ProgramNode)ast;
+        ClassDefNode classDef = program.Statements.OfType<ClassDefNode>().Should().ContainSingle().Subject;
+        classDef.Name.Value.Should().Be("Point");
+        classDef.Fields.Should().HaveCount(2);
+        classDef.Fields[0].Name.Value.Should().Be("x");
+        classDef.Fields[1].Name.Value.Should().Be("y");
+    }
+
+    [Fact]
+    public void Parse_ImplBlock_CreatesImplBlockNode()
+    {
+        string source = """
+            impl Point {
+              fn translate(self, dx: i32) {
+                pass;
+              }
+            }
+            """;
+        AstNode ast = ParseSource(source);
+
+        ast.Should().BeOfType<ProgramNode>();
+        ProgramNode program = (ProgramNode)ast;
+        ImplBlockNode implBlock = program.Statements.OfType<ImplBlockNode>().Should().ContainSingle().Subject;
+        implBlock.TargetClass.Value.Should().Be("Point");
+        implBlock.Methods.Should().HaveCount(1);
+        implBlock.Methods[0].Name.Value.Should().Be("translate");
     }
 }

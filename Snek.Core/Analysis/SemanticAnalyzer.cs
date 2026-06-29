@@ -55,6 +55,14 @@ public class SemanticAnalyzer : ISemanticAnalyzer
             {
                 RegisterExternFunction(extFunc);
             }
+            else if (statement is ClassDefNode classDef)
+            {
+                RegisterClassConstructor(classDef);
+            }
+            else if (statement is ImplBlockNode implBlock)
+            {
+                RegisterImplMethods(implBlock);
+            }
         }
     }
 
@@ -88,6 +96,47 @@ public class SemanticAnalyzer : ISemanticAnalyzer
         _scopeManager.AddGlobalSymbol(
             extFunc.Name.Value,
             new(TypeKind.Function, extFunc.Name.Line, extFunc.Name.Column, funcType));
+    }
+
+    private void RegisterClassConstructor(ClassDefNode classDef)
+    {
+        List<ParameterNode> constructorParams = [];
+        foreach (FieldNode field in classDef.Fields)
+        {
+            constructorParams.Add(new ParameterNode(field.Name, field.Type, null));
+        }
+
+        FunctionType constructorType = new(
+            classDef.Name.Value,
+            constructorParams,
+            TypeKind.Class);
+
+        _scopeManager.AddGlobalSymbol(
+            classDef.Name.Value,
+            new(TypeKind.Class, classDef.Name.Line, classDef.Name.Column, constructorType));
+    }
+
+    private void RegisterImplMethods(ImplBlockNode implBlock)
+    {
+        string className = implBlock.TargetClass.Value;
+
+        foreach (FunctionDefNode method in implBlock.Methods)
+        {
+            string mangledName = $"{className}_{method.Name.Value}";
+
+            TypeKind? returnType = method.ReturnType != null
+                ? TypeKindExtensions.FromString(method.ReturnType.Name.Value)
+                : null;
+
+            FunctionType funcType = new(
+                mangledName,
+                method.Parameters,
+                returnType);
+
+            _scopeManager.AddGlobalSymbol(
+                mangledName,
+                new(TypeKind.Function, method.Name.Line, method.Name.Column, funcType));
+        }
     }
 
     private void AnalyzeAllStatements(ProgramNode program)

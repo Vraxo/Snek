@@ -37,6 +37,7 @@ public class LexerRules
         Keywords["or"] = TokenType.KeywordOr;
         Keywords["not"] = TokenType.KeywordNot;
         Keywords["extern"] = TokenType.KeywordExtern;
+        Keywords["impl"] = TokenType.KeywordImpl;
 
         // Default operators (longest first to avoid prefix conflicts)
         Operators.Add(("**=", TokenType.DoubleStarAssign));

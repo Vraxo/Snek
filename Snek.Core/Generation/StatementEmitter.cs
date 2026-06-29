@@ -16,7 +16,7 @@ public class StatementEmitter
     public void EmitEntryPoint(IReadOnlyList<StatementNode> statements)
     {
         List<StatementNode> topLevelStatements = statements
-            .Where(statement => statement is not FunctionDefNode and not ExternFunctionDefNode)
+            .Where(statement => statement is not FunctionDefNode and not ExternFunctionDefNode and not ClassDefNode and not ImplBlockNode)
             .ToList();
 
         _generationContext.EmitLine("_start:");
@@ -67,8 +67,17 @@ public class StatementEmitter
     {
         string mangledName = _generationContext.MangleName(function.Name.Value);
         _generationContext.EmitLine($"{mangledName}:");
-        BeginFunctionPrologue();
 
+        // Map parameter stack offsets for standard functions
+        _generationContext.ParameterOffsets.Clear();
+        int paramOffset = 8;
+        foreach (ParameterNode parameter in function.Parameters)
+        {
+            _generationContext.ParameterOffsets[parameter.Name.Value] = paramOffset;
+            paramOffset += 4;
+        }
+
+        BeginFunctionPrologue();
         EmitParameterComments(function.Parameters);
         EmitStatements(function.Body);
 
@@ -78,6 +87,45 @@ public class StatementEmitter
         }
 
         EmitFunctionEpilogue();
+    }
+
+    public void EmitImplBlock(ImplBlockNode implBlock)
+    {
+        string className = implBlock.TargetClass.Value;
+        foreach (FunctionDefNode method in implBlock.Methods)
+        {
+            string mangledName = $"{className}_{method.Name.Value}";
+            _generationContext.EmitLine($"{mangledName}:");
+
+            // Record that inside this compiled method, 'self' has type 'className'
+            _generationContext.VariableTypes["self"] = className;
+
+            // Map parameter stack offsets for implementation block methods
+            _generationContext.ParameterOffsets.Clear();
+            _generationContext.ParameterOffsets["self"] = 8; // 'self' is always the first parameter
+
+            int paramOffset = 12;
+            foreach (ParameterNode parameter in method.Parameters)
+            {
+                if (parameter.Name.Value == "self")
+                {
+                    continue;
+                }
+                _generationContext.ParameterOffsets[parameter.Name.Value] = paramOffset;
+                paramOffset += 4;
+            }
+
+            BeginFunctionPrologue();
+            EmitParameterComments(method.Parameters);
+            EmitStatements(method.Body);
+
+            if (method.ReturnType == null)
+            {
+                _generationContext.Emit("xor eax, eax");
+            }
+
+            EmitFunctionEpilogue();
+        }
     }
 
     private void BeginFunctionPrologue()
@@ -211,6 +259,8 @@ public class StatementEmitter
         _generationContext.LocalOffsets[variableDeclaration.Name.Value] = offset;
         _generationContext.NextLocalOffset += 4;
 
+        _generationContext.VariableTypes[variableDeclaration.Name.Value] = variableDeclaration.Type.Name.Value;
+
         _generationContext.Emit("pop eax");
         _generationContext.Emit($"mov [ebp-{offset}], eax");
     }
@@ -219,14 +269,48 @@ public class StatementEmitter
     {
         _expressionEmitter.Emit(assignment.Value);
 
-        if (_generationContext.LocalOffsets.TryGetValue(assignment.Name.Value, out int offset))
+        if (assignment.Target is IdentifierExpressionNode id)
         {
-            _generationContext.Emit("pop eax");
-            _generationContext.Emit($"mov [ebp-{offset}], eax");
+            if (_generationContext.LocalOffsets.TryGetValue(id.Name.Value, out int offset))
+            {
+                _generationContext.Emit("pop eax");
+                _generationContext.Emit($"mov [ebp-{offset}], eax");
+            }
+            else
+            {
+                _generationContext.Emit("; undefined global assignment fallback");
+                _generationContext.Emit("pop eax");
+            }
+        }
+        else if (assignment.Target is MemberAccessExpressionNode member)
+        {
+            if (member.Object is IdentifierExpressionNode objId &&
+                _generationContext.VariableTypes.TryGetValue(objId.Name.Value, out string? className) &&
+                _generationContext.ClassFields.TryGetValue(className, out List<string>? fields))
+            {
+                int fieldIndex = fields.IndexOf(member.Member.Value);
+                if (fieldIndex != -1)
+                {
+                    _expressionEmitter.Emit(member.Object); // evaluates the object pointer (pushes base address)
+                    _generationContext.Emit("pop edx"); // edx = object base address pointer
+                    _generationContext.Emit("pop eax"); // eax = value to assign
+                    _generationContext.Emit($"mov [edx + {fieldIndex * 4}], eax"); // write value directly to field offset!
+                }
+                else
+                {
+                    _generationContext.Emit("; field not found");
+                    _generationContext.Emit("pop eax");
+                }
+            }
+            else
+            {
+                _generationContext.Emit("; unsupported member object assignment");
+                _generationContext.Emit("pop eax");
+            }
         }
         else
         {
-            _generationContext.Emit("; undefined global assignment fallback");
+            _generationContext.Emit("; unsupported assignment target");
             _generationContext.Emit("pop eax");
         }
     }

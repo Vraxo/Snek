@@ -64,7 +64,7 @@ public class ScopeManager
 
     public SymbolInfo? LookupFunction(string name)
     {
-        if (!_globals.TryGetValue(name, out SymbolInfo? info) || info.Type != TypeKind.Function)
+        if (!_globals.TryGetValue(name, out SymbolInfo? info) || (info.Type != TypeKind.Function && info.Type != TypeKind.Class))
         {
             return null;
         }

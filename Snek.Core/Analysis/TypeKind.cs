@@ -12,4 +12,5 @@ public enum TypeKind
     NoneType,   // None value
     Function,   // Represents a function (metadata contains FunctionType)
     List,       // Represents a dynamic list / array
+    Class,      // Represents a user-defined class
 }

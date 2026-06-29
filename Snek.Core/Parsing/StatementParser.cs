@@ -35,6 +35,16 @@ public class StatementParser
 
     private StatementNode? ParseStatement()
     {
+        if (_stream.Match(TokenType.KeywordImpl))
+        {
+            return ParseImplBlock();
+        }
+
+        if (_stream.Match(TokenType.KeywordClass))
+        {
+            return ParseClassDef();
+        }
+
         if (_stream.Match(TokenType.KeywordExtern))
         {
             return ParseExternFunctionDef();
@@ -88,11 +98,11 @@ public class StatementParser
             return decl;
         }
 
-        // Check for variable assignment: identifier '=' or '+=' or '-=' expression
-        if (_stream.Current.Type == TokenType.Identifier &&
-            _stream.Peek().Type is TokenType.Equals or TokenType.PlusAssign or TokenType.MinusAssign)
+        // Parse expression first to support generalized assignment statements (x = val, p.x = val, arr[idx] = val)
+        ExpressionNode leftExpr = _expressions.ParseExpression();
+
+        if (_stream.Current.Type is TokenType.Equals or TokenType.PlusAssign or TokenType.MinusAssign)
         {
-            Token name = _stream.Consume(TokenType.Identifier);
             TokenType op = _stream.Current.Type;
             _stream.Advance(); // consume assignment operator
             ExpressionNode value = _expressions.ParseExpression();
@@ -100,20 +110,19 @@ public class StatementParser
 
             if (op == TokenType.Equals)
             {
-                return new AssignmentStatementNode(name, value);
+                return new AssignmentStatementNode(leftExpr, value);
             }
             else
             {
                 TokenType binaryOp = op == TokenType.PlusAssign ? TokenType.Plus : TokenType.Minus;
-                Token opToken = new(binaryOp, binaryOp == TokenType.Plus ? "+" : "-", name.Line, name.Column);
-                BinaryExpressionNode desugared = new(new IdentifierExpressionNode(name), opToken, value);
-                return new AssignmentStatementNode(name, desugared);
+                Token opToken = new(binaryOp, binaryOp == TokenType.Plus ? "+" : "-", _stream.Current.Line, _stream.Current.Column);
+                BinaryExpressionNode desugared = new(leftExpr, opToken, value);
+                return new AssignmentStatementNode(leftExpr, desugared);
             }
         }
 
-        ExpressionNode expr = _expressions.ParseExpression();
         _stream.Consume(TokenType.Semicolon);
-        return new ExpressionStatementNode(expr);
+        return new ExpressionStatementNode(leftExpr);
     }
 
     private FunctionDefNode ParseFunctionDef()
@@ -132,6 +141,45 @@ public class StatementParser
         List<StatementNode> body = ParseBlock();
 
         return new(name, parameters, returnType, body);
+    }
+
+    private ImplBlockNode ParseImplBlock()
+    {
+        Token targetClass = _stream.Consume(TokenType.Identifier);
+        _stream.Consume(TokenType.LeftBrace);
+        List<FunctionDefNode> methods = [];
+
+        while (!_stream.Match(TokenType.RightBrace) && !_stream.Match(TokenType.Eof))
+        {
+            if (_stream.Match(TokenType.KeywordFn) || _stream.Match(TokenType.KeywordDef))
+            {
+                methods.Add(ParseFunctionDef());
+            }
+            else
+            {
+                _stream.Advance();
+            }
+        }
+
+        return new ImplBlockNode(targetClass, methods);
+    }
+
+    private ClassDefNode ParseClassDef()
+    {
+        Token name = _stream.Consume(TokenType.Identifier);
+        _stream.Consume(TokenType.LeftBrace);
+        List<FieldNode> fields = [];
+
+        while (!_stream.Match(TokenType.RightBrace) && !_stream.Match(TokenType.Eof))
+        {
+            Token fieldName = _stream.Consume(TokenType.Identifier);
+            _stream.Consume(TokenType.Colon);
+            TypeNode fieldType = ParseTypeAnnotation();
+            _stream.Consume(TokenType.Semicolon);
+            fields.Add(new FieldNode(fieldName, fieldType));
+        }
+
+        return new ClassDefNode(name, fields);
     }
 
     private ExternFunctionDefNode ParseExternFunctionDef()

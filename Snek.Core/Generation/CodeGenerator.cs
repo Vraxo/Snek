@@ -51,12 +51,14 @@ public class CodeGenerator : ICodeGenerator
     {
         foreach (StatementNode statement in program.Statements)
         {
-            if (statement is not FunctionDefNode function)
+            if (statement is FunctionDefNode function)
             {
-                continue;
+                _statementEmitter.EmitFunction(function);
             }
-
-            _statementEmitter.EmitFunction(function);
+            else if (statement is ImplBlockNode implBlock)
+            {
+                _statementEmitter.EmitImplBlock(implBlock);
+            }
         }
     }
 

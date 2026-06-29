@@ -30,7 +30,11 @@ public class StatementAnalyzer
                 AnalyzeFunction(func);
                 break;
             case ExternFunctionDefNode:
-                // Extern functions don't have block-bodies, nothing to analyze.
+            case ClassDefNode:
+                // Blueprint nodes, nothing to typecheck in body execution.
+                break;
+            case ImplBlockNode implBlock:
+                AnalyzeImplBlock(implBlock);
                 break;
             case ExpressionStatementNode expr:
                 _expressionAnalyzer.AnalyzeExpression(expr.Expression);
@@ -94,6 +98,58 @@ public class StatementAnalyzer
         }
     }
 
+    private void AnalyzeImplBlock(ImplBlockNode implBlock)
+    {
+        foreach (FunctionDefNode method in implBlock.Methods)
+        {
+            _scopeManager.PushScope();
+            try
+            {
+                // Register 'self' as a first-class class type in the local method scope
+                _scopeManager.AddSymbol("self", new SymbolInfo(TypeKind.Class, method.Name.Line, method.Name.Column));
+
+                foreach (ParameterNode param in method.Parameters)
+                {
+                    if (param.Name.Value == "self")
+                    {
+                        continue;
+                    }
+
+                    TypeKind paramType = param.TypeAnnotation != null
+                        ? TypeKindExtensions.FromString(param.TypeAnnotation.Name.Value)
+                        : TypeKind.Any;
+                    _scopeManager.AddSymbol(param.Name.Value, new SymbolInfo(paramType, param.Name.Line, param.Name.Column));
+                }
+
+                TypeKind? returnType = method.ReturnType != null
+                    ? TypeKindExtensions.FromString(method.ReturnType.Name.Value)
+                    : null;
+                bool hasReturn = false;
+
+                foreach (StatementNode bodyStmt in method.Body)
+                {
+                    AnalyzeStatement(bodyStmt, returnType);
+                    if (bodyStmt is ReturnStatementNode)
+                    {
+                        hasReturn = true;
+                    }
+                }
+
+                if (returnType.HasValue && returnType != TypeKind.NoneType && !hasReturn && returnType != TypeKind.Any)
+                {
+                    _context.Diagnostics.Add(new Diagnostic(
+                        _context.SourceName,
+                        $"Non-void method '{method.Name.Value}' must return a value",
+                        method.Name.Line, method.Name.Column, DiagnosticSeverity.Error));
+                }
+            }
+            finally
+            {
+                _scopeManager.PopScope();
+            }
+        }
+    }
+
     private void AnalyzeVariableDeclaration(VariableDeclarationNode varDecl)
     {
         TypeKind varType = TypeKindExtensions.FromString(varDecl.Type.Name.Value);
@@ -130,25 +186,34 @@ public class StatementAnalyzer
 
     private void AnalyzeAssignment(AssignmentStatementNode assign)
     {
-        SymbolInfo? symbol = _scopeManager.LookupSymbol(assign.Name.Value);
-        if (symbol == null)
+        TypeKind? targetType = TypeKind.Any;
+
+        if (assign.Target is IdentifierExpressionNode id)
         {
-            _context.Diagnostics.Add(new Diagnostic(
-                _context.SourceName,
-                $"Undefined identifier '{assign.Name.Value}'",
-                assign.Name.Line, assign.Name.Column, DiagnosticSeverity.Error));
-            return;
+            SymbolInfo? symbol = _scopeManager.LookupSymbol(id.Name.Value);
+            if (symbol == null)
+            {
+                _context.Diagnostics.Add(new Diagnostic(
+                    _context.SourceName,
+                    $"Undefined identifier '{id.Name.Value}'",
+                    id.Name.Line, id.Name.Column, DiagnosticSeverity.Error));
+                return;
+            }
+            symbol.IsWritten = true;
+            targetType = symbol.Type;
+        }
+        else if (assign.Target is MemberAccessExpressionNode member)
+        {
+            targetType = _expressionAnalyzer.AnalyzeExpression(member);
         }
 
-        symbol.IsWritten = true;
-
         TypeKind? valueType = _expressionAnalyzer.AnalyzeExpression(assign.Value);
-        if (valueType != null && symbol.Type != TypeKind.Any && valueType != symbol.Type)
+        if (valueType != null && targetType != null && targetType != TypeKind.Any && valueType != targetType)
         {
             _context.Diagnostics.Add(new Diagnostic(
                 _context.SourceName,
-                $"Type mismatch: cannot assign '{valueType.Value.ToTypeString()}' to variable of type '{symbol.Type.ToTypeString()}'",
-                assign.Name.Line, assign.Name.Column, DiagnosticSeverity.Error));
+                $"Type mismatch: cannot assign '{valueType.Value.ToTypeString()}' to variable of type '{targetType.Value.ToTypeString()}'",
+                -1, -1, DiagnosticSeverity.Error));
         }
     }
 

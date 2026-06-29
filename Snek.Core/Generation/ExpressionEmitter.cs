@@ -77,15 +77,23 @@ public class ExpressionEmitter
 
     private void EmitIdentifierAccess(IdentifierExpressionNode identifier)
     {
-        if (_generationContext.LocalOffsets.TryGetValue(identifier.Name.Value, out int offset))
+        string name = identifier.Name.Value;
+
+        if (_generationContext.LocalOffsets.TryGetValue(name, out int localOffset))
         {
-            _generationContext.Emit($"; load {identifier.Name.Value} (ebp-{offset})");
-            _generationContext.Emit($"mov eax, [ebp-{offset}]");
+            _generationContext.Emit($"; load {name} (ebp-{localOffset})");
+            _generationContext.Emit($"mov eax, [ebp-{localOffset}]");
+            _generationContext.Emit("push eax");
+        }
+        else if (_generationContext.ParameterOffsets.TryGetValue(name, out int paramOffset))
+        {
+            _generationContext.Emit($"; load parameter {name} (ebp+{paramOffset})");
+            _generationContext.Emit($"mov eax, [ebp+{paramOffset}]");
             _generationContext.Emit("push eax");
         }
         else
         {
-            _generationContext.Emit($"; load {identifier.Name.Value} (global/undefined)");
+            _generationContext.Emit($"; load {name} (global/undefined)");
             _generationContext.Emit("push 0");
         }
     }
@@ -97,7 +105,38 @@ public class ExpressionEmitter
             return;
         }
 
+        // Check if the callee is a method call (MemberAccessExpressionNode)!
+        if (call.Callee is MemberAccessExpressionNode member)
+        {
+            if (member.Object is IdentifierExpressionNode objId &&
+                _generationContext.VariableTypes.TryGetValue(objId.Name.Value, out string? className))
+            {
+                string mangledMethodName = $"{className}_{member.Member.Value}";
+
+                // 1. Push arguments from right to left
+                for (int i = call.Arguments.Count - 1; i >= 0; i--)
+                {
+                    Emit(call.Arguments[i]);
+                }
+
+                // 2. Push target object 'self' as the first parameter (i.e. evaluated last)
+                Emit(member.Object);
+
+                _generationContext.Emit($"call {mangledMethodName}");
+                _generationContext.Emit($"add esp, {(call.Arguments.Count + 1) * 4}");
+                _generationContext.Emit("push eax");
+                return;
+            }
+        }
+
         string calleeName = ExtractCalleeName(call);
+
+        if (_generationContext.ClassFields.TryGetValue(calleeName, out List<string>? fields))
+        {
+            EmitClassConstructor(calleeName, fields, call.Arguments);
+            return;
+        }
+
         string callTarget = DetermineCallTarget(calleeName);
 
         EmitArgumentsRightToLeft(call);
@@ -240,7 +279,7 @@ public class ExpressionEmitter
             Emit(list.Elements[i]);
             _generationContext.Emit("pop ebx"); // ebx gets element value
             _generationContext.Emit("mov eax, [esp]"); // eax gets saved array base address from top of stack
-            _generationContext.Emit($"mov [eax + {4 + i * 4}], ebx");
+            _generationContext.Emit($"mov [eax + {4 + (i * 4)}], ebx");
         }
 
         // Leave the final base address on the stack as the expression result
@@ -265,11 +304,47 @@ public class ExpressionEmitter
             _generationContext.Emit("pop eax"); // eax = base address
             _generationContext.Emit("mov eax, [eax]"); // reads length header at offset 0
             _generationContext.Emit("push eax");
+            return;
         }
-        else
+
+        if (member.Object is IdentifierExpressionNode id &&
+            _generationContext.VariableTypes.TryGetValue(id.Name.Value, out string? className) &&
+            _generationContext.ClassFields.TryGetValue(className, out List<string>? fields))
         {
-            _generationContext.Emit("; unsupported property access");
-            _generationContext.Emit("push 0");
+            int fieldIndex = fields.IndexOf(member.Member.Value);
+            if (fieldIndex != -1)
+            {
+                Emit(member.Object); // evaluates the object pointer (pushes base address)
+                _generationContext.Emit("pop eax"); // eax = base address
+                _generationContext.Emit($"mov eax, [eax + {fieldIndex * 4}]");
+                _generationContext.Emit("push eax");
+                return;
+            }
+        }
+
+        _generationContext.Emit("; unsupported property access");
+        _generationContext.Emit("push 0");
+    }
+
+    private void EmitClassConstructor(string className, List<string> fields, List<ExpressionNode> args)
+    {
+        int fieldCount = fields.Count;
+        int byteSize = fieldCount * 4;
+
+        _generationContext.Emit($"; allocate {byteSize} bytes on heap for constructor {className}");
+        _generationContext.Emit($"push {byteSize}");
+        _generationContext.Emit("call [malloc]");
+        _generationContext.Emit("add esp, 4");
+
+        // Save the base address onto the stack
+        _generationContext.Emit("push eax");
+
+        for (int i = 0; i < Math.Min(fieldCount, args.Count); i++)
+        {
+            Emit(args[i]);
+            _generationContext.Emit("pop ebx"); // ebx gets argument value
+            _generationContext.Emit("mov eax, [esp]"); // eax gets saved heap base address from top of stack
+            _generationContext.Emit($"mov [eax + {i * 4}], ebx");
         }
     }
 }

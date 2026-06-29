@@ -7,6 +7,7 @@ namespace Snek.Core.Generation;
 public class StringCollector
 {
     private readonly GenerationContext _ctx;
+    private readonly HashSet<string> _localDeclarations = [];
 
     public StringCollector(GenerationContext ctx)
     {
@@ -15,8 +16,35 @@ public class StringCollector
 
     public void Collect(AstNode node)
     {
+        CollectLocalDeclarations(node);
         CollectNode(node);
         WalkChildren(node);
+    }
+
+    private void CollectLocalDeclarations(AstNode node)
+    {
+        if (node is ProgramNode program)
+        {
+            foreach (StatementNode statement in program.Statements)
+            {
+                if (statement is FunctionDefNode func)
+                {
+                    _localDeclarations.Add(func.Name.Value);
+                }
+                else if (statement is ClassDefNode classDef)
+                {
+                    _localDeclarations.Add(classDef.Name.Value);
+                }
+                else if (statement is ImplBlockNode implBlock)
+                {
+                    string className = implBlock.TargetClass.Value;
+                    foreach (FunctionDefNode method in implBlock.Methods)
+                    {
+                        _localDeclarations.Add($"{className}_{method.Name.Value}");
+                    }
+                }
+            }
+        }
     }
 
     private void CollectNode(AstNode node)
@@ -31,6 +59,11 @@ public class StringCollector
         }
         else if (node is ListExpressionNode)
         {
+            _ctx.ExternalFunctions.Add("malloc");
+        }
+        else if (node is ClassDefNode classDef)
+        {
+            _ctx.ClassFields[classDef.Name.Value] = classDef.Fields.Select(f => f.Name.Value).ToList();
             _ctx.ExternalFunctions.Add("malloc");
         }
     }
@@ -57,7 +90,14 @@ public class StringCollector
             return;
         }
 
-        if (id.Name.Value is "print")
+        string name = id.Name.Value;
+
+        if (_localDeclarations.Contains(name))
+        {
+            return; // Local function, constructor, or method call. Bypass DLL linkage.
+        }
+
+        if (name is "print")
         {
             _ctx.ExternalFunctions.Add("printf");
 
@@ -82,13 +122,13 @@ public class StringCollector
             return;
         }
 
-        if (id.Name.Value is "pause")
+        if (name is "pause")
         {
             _ctx.ExternalFunctions.Add("_getch");
             return;
         }
 
-        if (id.Name.Value is "read_i32")
+        if (name is "read_i32")
         {
             _ctx.ExternalFunctions.Add("scanf");
             if (!_ctx.StringLiterals.ContainsValue("%d"))
@@ -98,7 +138,7 @@ public class StringCollector
             return;
         }
 
-        _ctx.ExternalFunctions.Add(id.Name.Value);
+        _ctx.ExternalFunctions.Add(name);
     }
 
     private bool IsStringLiteral(ExpressionNode expr)

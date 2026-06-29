@@ -55,6 +55,9 @@ public class GenerationContext
     public int StringCounter { get; set; }
     public Dictionary<string, int> LocalOffsets { get; } = [];
     public int NextLocalOffset { get; set; } = 4;
+    public Dictionary<string, List<string>> ClassFields { get; } = [];
+    public Dictionary<string, string> VariableTypes { get; } = [];
+    public Dictionary<string, int> ParameterOffsets { get; } = [];
 
     public void Reset()
     {
@@ -66,6 +69,9 @@ public class GenerationContext
         StringCounter = 0;
         LocalOffsets.Clear();
         NextLocalOffset = 4;
+        ClassFields.Clear();
+        VariableTypes.Clear();
+        ParameterOffsets.Clear();
     }
 
     public string MangleName(string name)
