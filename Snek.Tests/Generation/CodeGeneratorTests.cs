@@ -25,10 +25,7 @@ public sealed class CodeGeneratorTests
         Parser parser = new();
         SemanticAnalyzer analyzer = new();
 
-        string prelude = Snek.Core.Pipeline.CompilerPipeline.GetPrelude();
-        string finalSource = source.Contains("class List") ? source : prelude + source;
-
-        IEnumerable<Token> tokens = lexer.Tokenize(finalSource, _context);
+        IEnumerable<Token> tokens = lexer.Tokenize(source, _context);
         AstNode ast = parser.Parse(tokens, _context);
         analyzer.Analyze(ast, _context);
 
@@ -208,10 +205,7 @@ public sealed class CodeGeneratorTests
         SemanticAnalyzer analyzer = new();
         CompilationContext context = new("test.snek", new());
 
-        string prelude = Snek.Core.Pipeline.CompilerPipeline.GetPrelude();
-        string finalSource = prelude + source;
-
-        IEnumerable<Token> tokens = lexer.Tokenize(finalSource, context);
+        IEnumerable<Token> tokens = lexer.Tokenize(source, context);
         AstNode ast = parser.Parse(tokens, context);
         analyzer.Analyze(ast, context);
 
@@ -227,10 +221,7 @@ public sealed class CodeGeneratorTests
         SemanticAnalyzer analyzer = new();
         CompilationContext context = new("test.snek", new());
 
-        string prelude = Snek.Core.Pipeline.CompilerPipeline.GetPrelude();
-        string finalSource = prelude + source;
-
-        IEnumerable<Token> tokens = lexer.Tokenize(finalSource, context);
+        IEnumerable<Token> tokens = lexer.Tokenize(source, context);
         AstNode ast = parser.Parse(tokens, context);
         analyzer.Analyze(ast, context);
 
@@ -282,8 +273,8 @@ public sealed class CodeGeneratorTests
 
         string output = GenerateSource(source);
 
-        output.Should().Contain("mov [eax + 4]");       // List constructor stores elementCount at offset 4
-        output.Should().Contain("mov eax, [eax + 4]");   // Property load length field lookup
+        output.Should().Contain("mov dword [eax], 2"); // Alloc header store length
+        output.Should().Contain("mov eax, [eax]");     // Property load header lookup
     }
 
     [Fact]

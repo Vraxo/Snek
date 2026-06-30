@@ -158,20 +158,23 @@ public class StatementParser
 
     private UseStatementNode ParseUse()
     {
-        Token moduleToken = _stream.Consume(TokenType.Identifier);
-        _stream.Consume(TokenType.DoubleColon);
+        List<Token> path = [];
 
-        if (_stream.Match(TokenType.Star))
+        do
         {
-            _stream.Consume(TokenType.Semicolon);
-            return new UseStatementNode(moduleToken, null, true);
-        }
-        else
-        {
-            Token itemToken = _stream.Consume(TokenType.Identifier);
-            _stream.Consume(TokenType.Semicolon);
-            return new UseStatementNode(moduleToken, itemToken, false);
-        }
+            if (_stream.Match(TokenType.Star))
+            {
+                _stream.Consume(TokenType.Semicolon);
+                return new UseStatementNode(path, true);
+            }
+
+            Token part = _stream.Consume(TokenType.Identifier);
+            path.Add(part);
+
+        } while (_stream.Match(TokenType.DoubleColon));
+
+        _stream.Consume(TokenType.Semicolon);
+        return new UseStatementNode(path, false);
     }
 
     private FunctionDefNode ParseFunctionDef(bool isPub)

@@ -25,10 +25,7 @@ public class ModuleMetadata
             {
                 Declarations[func.Name.Value] = func.IsPublic;
             }
-            else if (statement is ExternFunctionDefNode extFunc)
-            {
-                Declarations[extFunc.Name.Value] = extFunc.IsPublic;
-            }
+            // Exempt ExternFunctionDefNode to prevent system DLL import symbol corruption
             else if (statement is ImplBlockNode implBlock)
             {
                 foreach (FunctionDefNode method in implBlock.Methods)
@@ -77,7 +74,10 @@ public class CompilerPipeline
 
             IEnumerable<Token> tokens = _lexer.Tokenize(source, context);
 
-            // Stage 2: Parsing (Stage 1 Parsing)
+            // Pre-process DoubleColon tokens in expression contexts before parsing
+            tokens = MergeDoubleColonIdentifiers(tokens);
+
+            // Stage 2: Parsing
             if (_options.EnableLogging)
             {
                 LogStage(sourceName, "Parsing");
@@ -94,7 +94,10 @@ public class CompilerPipeline
             {
                 HashSet<string> importedModules = [];
                 Dictionary<string, string> globalAliasTable = [];
-                List<StatementNode> resolvedStatements = ResolveImportsAndBuildAliasTable(program.Statements, context, importedModules, globalAliasTable);
+                Dictionary<string, ModuleMetadata> moduleMetadataCache = [];
+
+                List<StatementNode> resolvedStatements = ResolveImportsAndBuildAliasTable(
+                    program.Statements, context, importedModules, globalAliasTable, moduleMetadataCache);
 
                 // Re-lex and Parse parent file if imports changed symbol names
                 if (globalAliasTable.Count > 0)
@@ -179,16 +182,54 @@ public class CompilerPipeline
         }
     }
 
+    private List<Token> MergeDoubleColonIdentifiers(IEnumerable<Token> tokens)
+    {
+        List<Token> raw = [.. tokens];
+        List<Token> merged = [];
+        bool inUseStatement = false;
+
+        for (int i = 0; i < raw.Count; i++)
+        {
+            Token t = raw[i];
+
+            if (t.Type == TokenType.KeywordUse)
+            {
+                inUseStatement = true;
+            }
+            else if (t.Type == TokenType.Semicolon)
+            {
+                inUseStatement = false;
+            }
+
+            if (!inUseStatement &&
+                t.Type == TokenType.Identifier &&
+                i + 2 < raw.Count &&
+                raw[i + 1].Type == TokenType.DoubleColon &&
+                raw[i + 2].Type == TokenType.Identifier)
+            {
+                Token nextIdent = raw[i + 2];
+                string mergedValue = $"{t.Value}_{nextIdent.Value}";
+                merged.Add(t with { Value = mergedValue });
+                i += 2; // Skip DoubleColon and second Identifier
+            }
+            else
+            {
+                merged.Add(t);
+            }
+        }
+        return merged;
+    }
+
     private List<StatementNode> ResolveImportsAndBuildAliasTable(
         IReadOnlyList<StatementNode> statements,
         CompilationContext context,
         HashSet<string> importedModules,
-        Dictionary<string, string> parentAliasTable)
+        Dictionary<string, string> parentAliasTable,
+        Dictionary<string, ModuleMetadata> moduleMetadataCache)
     {
         List<StatementNode> resolved = [];
-        Dictionary<string, ModuleMetadata> moduleMetadataCache = [];
 
-        // 1. Process Mod Declarations first
+        // 1. Process Mod Declarations first (for local modules)
         foreach (StatementNode statement in statements)
         {
             if (statement is ModuleDeclarationNode modNode)
@@ -196,94 +237,11 @@ public class CompilerPipeline
                 string moduleName = modNode.Name.Value;
                 if (importedModules.Contains(moduleName))
                 {
-                    continue; // Prevent cycle/duplicate loading
+                    continue; // Prevent infinite import loops/duplicates
                 }
                 importedModules.Add(moduleName);
 
-                string? moduleSource = null;
-
-                // Multi-path module file resolution
-                string relativeDir = Path.GetDirectoryName(Path.GetFullPath(context.SourceName)) ?? Directory.GetCurrentDirectory();
-                string relativePath = Path.Combine(relativeDir, $"{moduleName}.snek");
-                string stdLibPath = Path.Combine(AppContext.BaseDirectory, "std", $"{moduleName}.snek");
-                string cwdPath = Path.Combine(Directory.GetCurrentDirectory(), $"{moduleName}.snek");
-                string devPath = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "Snek", "std", $"{moduleName}.snek");
-
-                if (File.Exists(relativePath))
-                {
-                    moduleSource = File.ReadAllText(relativePath);
-                }
-                else if (File.Exists(stdLibPath))
-                {
-                    moduleSource = File.ReadAllText(stdLibPath);
-                }
-                else if (File.Exists(cwdPath))
-                {
-                    moduleSource = File.ReadAllText(cwdPath);
-                }
-                else if (File.Exists(devPath))
-                {
-                    moduleSource = File.ReadAllText(devPath);
-                }
-
-                if (moduleSource == null)
-                {
-                    context.Diagnostics.Add(new(
-                        context.SourceName,
-                        $"Module '{moduleName}' not found",
-                        modNode.Name.Line, modNode.Name.Column,
-                        DiagnosticSeverity.Error));
-                    continue;
-                }
-
-                // Initial Tokenization and Parse for ModuleMetadata (Visibilities)
-                IEnumerable<Token> rawTokens = _lexer.Tokenize(moduleSource, context);
-                AstNode rawModuleAst = _parser.Parse(rawTokens, context);
-
-                if (rawModuleAst is ProgramNode rawModuleProgram)
-                {
-                    ModuleMetadata meta = new(moduleName, rawModuleProgram);
-                    moduleMetadataCache[moduleName] = meta;
-
-                    // Build Module-Internal Rename Map
-                    Dictionary<string, string> internalRenameMap = [];
-                    foreach (KeyValuePair<string, bool> kvp in meta.Declarations)
-                    {
-                        if (kvp.Value) // IsPublic == true
-                        {
-                            internalRenameMap[kvp.Key] = $"{moduleName}_{kvp.Key}";
-                        }
-                        else
-                        {
-                            internalRenameMap[kvp.Key] = $"_private_{moduleName}_{kvp.Key}";
-                        }
-                    }
-
-                    // Rename identifiers inside the module token stream to enforce encapsulation
-                    List<Token> mangledModuleTokens = [];
-                    foreach (Token t in rawTokens)
-                    {
-                        if (t.Type == TokenType.Identifier && internalRenameMap.TryGetValue(t.Value, out string? renamed))
-                        {
-                            mangledModuleTokens.Add(t with { Value = renamed });
-                        }
-                        else
-                        {
-                            mangledModuleTokens.Add(t);
-                        }
-                    }
-
-                    // Re-parse the fully mangled module file
-                    AstNode mangledModuleAst = _parser.Parse(mangledModuleTokens, context);
-                    if (mangledModuleAst is ProgramNode mangledModuleProgram)
-                    {
-                        // Recursively resolve imports within module files
-                        List<StatementNode> resolvedMangledModuleStatements = ResolveImportsAndBuildAliasTable(
-                            mangledModuleProgram.Statements, context, importedModules, parentAliasTable);
-
-                        resolved.AddRange(resolvedMangledModuleStatements);
-                    }
-                }
+                LoadAndMangleModule(moduleName, modNode.Name.Line, modNode.Name.Column, context, importedModules, moduleMetadataCache, resolved);
             }
         }
 
@@ -292,13 +250,65 @@ public class CompilerPipeline
         {
             if (statement is UseStatementNode useNode)
             {
-                string moduleName = useNode.ModuleName.Value;
+                if (useNode.Path.Count < 2)
+                {
+                    context.Diagnostics.Add(new(
+                        context.SourceName,
+                        "Error: 'use' statement path must contain at least a module and an item",
+                        useNode.Path[0].Line, useNode.Path[0].Column,
+                        DiagnosticSeverity.Error));
+                    continue;
+                }
+
+                // Check if the path begins with implicitly linked std package
+                string packageOrModule = useNode.Path[0].Value;
+
+                string moduleName;
+                string itemName = "";
+
+                if (packageOrModule == "std")
+                {
+                    if (useNode.Path.Count < 3 && !useNode.IsWildcard)
+                    {
+                        context.Diagnostics.Add(new(
+                            context.SourceName,
+                            "Error: 'use std::...' imports require a module and item name",
+                            useNode.Path[0].Line, useNode.Path[0].Column,
+                            DiagnosticSeverity.Error));
+                        continue;
+                    }
+
+                    string stdModuleName = useNode.Path[1].Value;
+                    moduleName = $"std_{stdModuleName}";
+
+                    if (!useNode.IsWildcard)
+                    {
+                        itemName = useNode.Path[2].Value;
+                    }
+
+                    if (!importedModules.Contains(moduleName))
+                    {
+                        importedModules.Add(moduleName);
+                        // Load the std library file dynamically
+                        LoadAndMangleModule(stdModuleName, useNode.Path[0].Line, useNode.Path[0].Column, context, importedModules, moduleMetadataCache, resolved, isStd: true);
+                    }
+                }
+                else
+                {
+                    // Local submodule use
+                    moduleName = packageOrModule;
+                    if (!useNode.IsWildcard)
+                    {
+                        itemName = useNode.Path[1].Value;
+                    }
+                }
+
                 if (!moduleMetadataCache.TryGetValue(moduleName, out ModuleMetadata? meta))
                 {
                     context.Diagnostics.Add(new(
                         context.SourceName,
-                        $"Cannot resolve use statement; module '{moduleName}' is not loaded in this file.",
-                        useNode.ModuleName.Line, useNode.ModuleName.Column,
+                        $"Cannot resolve use statement; module '{moduleName}' is not loaded or declared.",
+                        useNode.Path[0].Line, useNode.Path[0].Column,
                         DiagnosticSeverity.Error));
                     continue;
                 }
@@ -313,21 +323,29 @@ public class CompilerPipeline
                         }
                     }
                 }
-                else if (useNode.ItemName != null)
+                else
                 {
-                    string itemName = useNode.ItemName.Value;
                     if (meta.Declarations.TryGetValue(itemName, out bool isPublic))
                     {
                         if (isPublic)
                         {
                             parentAliasTable[itemName] = $"{moduleName}_{itemName}";
+
+                            // Automatically import all public associated methods of this class so users don't have to import them manually!
+                            foreach (KeyValuePair<string, bool> kvp in meta.Declarations)
+                            {
+                                if (kvp.Key.StartsWith($"{itemName}_") && kvp.Value)
+                                {
+                                    parentAliasTable[kvp.Key] = $"{moduleName}_{kvp.Key}";
+                                }
+                            }
                         }
                         else
                         {
                             context.Diagnostics.Add(new(
                                 context.SourceName,
                                 $"Error: member '{itemName}' is private in module '{moduleName}'",
-                                useNode.ItemName.Line, useNode.ItemName.Column,
+                                useNode.Path[^1].Line, useNode.Path[^1].Column,
                                 DiagnosticSeverity.Error));
                         }
                     }
@@ -336,7 +354,7 @@ public class CompilerPipeline
                         context.Diagnostics.Add(new(
                             context.SourceName,
                             $"Error: module '{moduleName}' does not declare a public member '{itemName}'",
-                            useNode.ItemName.Line, useNode.ItemName.Column,
+                            useNode.Path[^1].Line, useNode.Path[^1].Column,
                             DiagnosticSeverity.Error));
                     }
                 }
@@ -344,6 +362,120 @@ public class CompilerPipeline
         }
 
         return resolved;
+    }
+
+    private void LoadAndMangleModule(
+        string moduleName,
+        int line,
+        int col,
+        CompilationContext context,
+        HashSet<string> importedModules,
+        Dictionary<string, ModuleMetadata> moduleMetadataCache,
+        List<StatementNode> resolved,
+        bool isStd = false)
+    {
+        string? moduleSource = null;
+
+        // Path resolution
+        string relativeDir = Path.GetDirectoryName(Path.GetFullPath(context.SourceName)) ?? Directory.GetCurrentDirectory();
+        string relativePath = Path.Combine(relativeDir, $"{moduleName}.snek");
+        string stdLibPath = Path.Combine(AppContext.BaseDirectory, "std", $"{moduleName}.snek");
+        string cwdPath = Path.Combine(Directory.GetCurrentDirectory(), $"{moduleName}.snek");
+        string devPath = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "Snek", "std", $"{moduleName}.snek");
+
+        if (isStd)
+        {
+            if (File.Exists(stdLibPath))
+            {
+                moduleSource = File.ReadAllText(stdLibPath);
+            }
+            else if (File.Exists(devPath))
+            {
+                moduleSource = File.ReadAllText(devPath);
+            }
+        }
+        else
+        {
+            if (File.Exists(relativePath))
+            {
+                moduleSource = File.ReadAllText(relativePath);
+            }
+            else if (File.Exists(stdLibPath))
+            {
+                moduleSource = File.ReadAllText(stdLibPath);
+            }
+            else if (File.Exists(cwdPath))
+            {
+                moduleSource = File.ReadAllText(cwdPath);
+            }
+            else if (File.Exists(devPath))
+            {
+                moduleSource = File.ReadAllText(devPath);
+            }
+        }
+
+        if (moduleSource == null)
+        {
+            context.Diagnostics.Add(new(
+                context.SourceName,
+                $"Module '{moduleName}' not found",
+                line, col,
+                DiagnosticSeverity.Error));
+            return;
+        }
+
+        // Tokenize module source code
+        IEnumerable<Token> rawTokens = _lexer.Tokenize(moduleSource, context);
+        rawTokens = MergeDoubleColonIdentifiers(rawTokens);
+
+        AstNode rawModuleAst = _parser.Parse(rawTokens, context);
+
+        if (rawModuleAst is ProgramNode rawModuleProgram)
+        {
+            string finalMangledModuleName = isStd ? $"std_{moduleName}" : moduleName;
+            ModuleMetadata meta = new(finalMangledModuleName, rawModuleProgram);
+            moduleMetadataCache[finalMangledModuleName] = meta;
+
+            // Build Module-Internal Rename Map
+            Dictionary<string, string> internalRenameMap = [];
+            foreach (KeyValuePair<string, bool> kvp in meta.Declarations)
+            {
+                if (kvp.Value) // IsPublic == true
+                {
+                    internalRenameMap[kvp.Key] = $"{finalMangledModuleName}_{kvp.Key}";
+                }
+                else
+                {
+                    internalRenameMap[kvp.Key] = $"_private_{finalMangledModuleName}_{kvp.Key}";
+                }
+            }
+
+            // Rename tokens within module stream
+            List<Token> mangledModuleTokens = [];
+            foreach (Token t in rawTokens)
+            {
+                if (t.Type == TokenType.Identifier && internalRenameMap.TryGetValue(t.Value, out string? renamed))
+                {
+                    mangledModuleTokens.Add(t with { Value = renamed });
+                }
+                else
+                {
+                    mangledModuleTokens.Add(t);
+                }
+            }
+
+            // Parse mangled tokens
+            AstNode mangledModuleAst = _parser.Parse(mangledModuleTokens, context);
+            if (mangledModuleAst is ProgramNode mangledModuleProgram)
+            {
+                List<StatementNode> resolvedMangled = ResolveImportsAndBuildAliasTable(
+                    mangledModuleProgram.Statements, context, importedModules, [], moduleMetadataCache);
+                resolved.AddRange(resolvedMangled);
+
+                // Add the module's own mangled statements (classes/impl blocks) into the final AST resolved stream
+                resolved.AddRange(mangledModuleProgram.Statements);
+            }
+        }
     }
 
     private static void LogStage(string sourceName, string stage)

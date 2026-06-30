@@ -2,4 +2,4 @@
 
 namespace Snek.Core.Ast;
 
-public record UseStatementNode(Token ModuleName, Token? ItemName, bool IsWildcard) : StatementNode;
+public record UseStatementNode(List<Token> Path, bool IsWildcard) : StatementNode;
